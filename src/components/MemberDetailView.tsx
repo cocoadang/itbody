@@ -1,3 +1,4 @@
+import { confirmDialog } from '../utils/confirmDialog';
 import { KakaoInvite } from './KakaoLogin';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
@@ -471,7 +472,7 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
       alert('본인 담당 회원의 목표만 삭제할 수 있습니다.');
       return;
     }
-    if (!window.confirm('이 목표를 삭제하시겠습니까?')) return;
+    if (!await confirmDialog('이 목표를 삭제하시겠습니까?')) return;
     try {
       await deleteGoal(member.centerId, goalId, currentUser.role, currentUser.trainerId);
       await refreshTimelineAndGoals();

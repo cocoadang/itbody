@@ -1,3 +1,4 @@
+import { confirmDialog } from '../utils/confirmDialog';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { updateRenewal, deleteRenewal } from '../services/dataService';
@@ -182,7 +183,7 @@ export const RenewalModal: React.FC<RenewalModalProps> = ({
 
   const handleDelete = async () => {
     if (!isCenterAdmin) return;
-    if (!window.confirm('정말 이 재등록 상담 기록을 삭제하시겠습니까?')) return;
+    if (!await confirmDialog('정말 이 재등록 상담 기록을 삭제하시겠습니까?')) return;
 
     setIsDeleting(true);
     setError(null);

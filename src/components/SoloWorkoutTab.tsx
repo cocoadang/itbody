@@ -1,3 +1,4 @@
+import { confirmDialog } from '../utils/confirmDialog';
 import React, { useState, useEffect } from 'react';
 import {
   Flame,
@@ -330,7 +331,7 @@ export const SoloWorkoutTab: React.FC<SoloWorkoutTabProps> = ({ member, onUpdate
       alert('본인 담당 회원의 개인운동 계획만 삭제할 수 있습니다.');
       return;
     }
-    if (!window.confirm(`'${plan.title}' 계획을 삭제하시겠습니까?`)) return;
+    if (!await confirmDialog(`'${plan.title}' 계획을 삭제하시겠습니까?`)) return;
     try {
       await deletePersonalWorkoutPlan(currentCenterId, plan.planId, currentUser.role);
       await loadAllData();
@@ -376,7 +377,7 @@ export const SoloWorkoutTab: React.FC<SoloWorkoutTabProps> = ({ member, onUpdate
   // Delete Log
   const handleDeleteLog = async (log: PersonalWorkoutLog) => {
     if (!currentUser || !currentCenterId) return;
-    if (!window.confirm('회원의 수행 기록을 삭제하시겠습니까?')) return;
+    if (!await confirmDialog('회원의 수행 기록을 삭제하시겠습니까?')) return;
     try {
       await deletePersonalWorkoutLog(currentCenterId, log.logId, currentUser.role);
       await loadAllData();
@@ -389,7 +390,7 @@ export const SoloWorkoutTab: React.FC<SoloWorkoutTabProps> = ({ member, onUpdate
   // Delete Template
   const handleDeleteTemplate = async (templateId: string, title: string) => {
     if (!currentUser || !currentCenterId) return;
-    if (!window.confirm(`'${title}' 템플릿을 삭제하시겠습니까?`)) return;
+    if (!await confirmDialog(`'${title}' 템플릿을 삭제하시겠습니까?`)) return;
     try {
       await deleteWorkoutTemplate(currentCenterId, templateId, currentUser.role);
       await loadAllData();

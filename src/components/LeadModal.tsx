@@ -1,3 +1,4 @@
+import { confirmDialog } from '../utils/confirmDialog';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -519,7 +520,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
   const handleDelete = async () => {
     if (!lead || !currentUser || !isCenterAdmin) return;
-    if (!window.confirm(`'${lead.name}' 님의 신규문의 데이터를 완전히 삭제하시겠습니까?`)) {
+    if (!await confirmDialog(`'${lead.name}' 님의 신규문의 데이터를 완전히 삭제하시겠습니까?`)) {
       return;
     }
 

@@ -1,3 +1,4 @@
+import { confirmDialog } from '../utils/confirmDialog';
 import React, { useState, useEffect } from 'react';
 import {
   Dumbbell,
@@ -228,7 +229,7 @@ export const ExerciseLibraryView: React.FC = () => {
 
   const handleDelete = async (exerciseId: string, name: string) => {
     if (!currentUser || !currentCenterId) return;
-    if (!window.confirm(`'${name}' 운동을 라이브러리에서 삭제하시겠습니까?`)) {
+    if (!await confirmDialog(`'${name}' 운동을 라이브러리에서 삭제하시겠습니까?`)) {
       return;
     }
 

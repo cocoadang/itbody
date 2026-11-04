@@ -114,6 +114,9 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
   const [customExercise, setCustomExercise] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [existingMedia, setExistingMedia] = useState<SessionMedia[]>([]);
+  const [removedMedia, setRemovedMedia] = useState<SessionMedia[]>([]);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [listError, setListError] = useState('');
   const [progress, setProgress] = useState<string>('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -180,6 +183,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
     setExercises([]);
     setFiles([]);
     setExistingMedia([]);
+    setRemovedMedia([]);
     setError('');
     setProgress('');
     setIsOpen(true);
@@ -195,6 +199,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
     setExercises((s.exercises || []).map(toDraft));
     setFiles([]);
     setExistingMedia(s.media || []);
+    setRemovedMedia([]);
     setError('');
     setProgress('');
     setIsOpen(true);
@@ -218,19 +223,14 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
   const pickFiles = (list: FileList | null) => {
     if (!list) return;
     const accepted = Array.from(list).filter((f) => f.type.startsWith('image/') || f.type.startsWith('video/'));
-    setFiles((prev) => [...prev, ...accepted].slice(0, MAX_FILES - existingMedia.length));
+    setFiles((prev) => [...prev, ...accepted].slice(0, MAX_FILES - existingMedia.length + removedMedia.length));
     if (fileInput.current) fileInput.current.value = '';
   };
 
-  const handleRemoveExistingMedia = async (item: SessionMedia) => {
-    if (!editing || !window.confirm('이 파일을 삭제할까요?')) return;
-    try {
-      await removeSessionMedia(editing.sessionId, item.mediaId);
-      setExistingMedia((prev) => prev.filter((m) => m.mediaId !== item.mediaId));
-      setSessions((prev) => prev.map((s) => (s.sessionId === editing.sessionId ? { ...s, media: (s.media || []).filter((m) => m.mediaId !== item.mediaId) } : s)));
-    } catch (err: any) {
-      setError(err?.message || '파일을 삭제하지 못했습니다.');
-    }
+  // Browser confirm() dialogs are blocked in some in-app browsers (KakaoTalk, the Claude app),
+  // which silently cancelled deletes. Removal is marked here and applied when the form is saved.
+  const handleRemoveExistingMedia = (item: SessionMedia) => {
+    setRemovedMedia((prev) => [...prev, item]);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -262,6 +262,14 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
         sessionId = created.sessionId;
       }
       const failed: string[] = [];
+      for (const m of removedMedia) {
+        try {
+          await removeSessionMedia(sessionId!, m.mediaId);
+        } catch (err: any) {
+          failed.push(`${m.name || '파일'} 삭제: ${err?.message || '실패'}`);
+        }
+      }
+      setRemovedMedia([]);
       for (let i = 0; i < files.length; i++) {
         try {
           await uploadSessionMedia(sessionId!, files[i], (f) => setProgress(`사진·영상 올리는 중 ${i + 1}/${files.length} (${Math.round(f * 100)}%)`));
@@ -274,7 +282,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
       if (failed.length) {
         // The journal is saved; keep the form open on the saved record so files can be retried.
         setFiles([]);
-        setError(`수업 일지는 저장했지만 일부 파일을 올리지 못했습니다.\n${failed.join('\n')}`);
+        setError(`수업 일지는 저장했지만 일부 파일을 처리하지 못했습니다.\n${failed.join('\n')}`);
         const saved = (await getSessionsByMember(member.centerId, member.memberId, currentUser.role, currentUser.trainerId)).find((s) => s.sessionId === sessionId);
         if (saved) { setEditing(saved); setExistingMedia(saved.media || []); }
       } else {
@@ -290,13 +298,14 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
 
   const handleDelete = async (s: PtSession) => {
     if (!currentUser || !canEdit) return;
-    if (!window.confirm(`${s.sessionNumber}회차 수업 일지를 삭제할까요? 완료된 수업이면 PT 잔여 횟수가 복구됩니다.`)) return;
+    setConfirmDeleteId(null);
+    setListError('');
     try {
       for (const m of s.media || []) await removeSessionMedia(s.sessionId, m.mediaId).catch(() => undefined);
       await deletePtSession(member.centerId, s.sessionId, currentUser.role, currentUser.trainerId);
       await reload();
     } catch (err: any) {
-      alert(err?.message || '삭제하지 못했습니다.');
+      setListError(err?.message || '삭제하지 못했습니다.');
     }
   };
 
@@ -343,6 +352,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
         </label>
       )}
       {commentsError && <p className="text-xs text-stone-500">회원 댓글: {commentsError}</p>}
+      {listError && <p className="text-sm text-rose-600">{listError}</p>}
 
       {/* Sessions */}
       {sessions.length === 0 ? (
@@ -373,10 +383,19 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
                   {canEdit && (
                     <div className="flex items-center gap-1 shrink-0">
                       <button type="button" onClick={() => openEdit(s)} className="p-2 text-stone-400 hover:text-stone-800 rounded-lg" aria-label="수정"><Edit2 className="w-4 h-4" /></button>
-                      <button type="button" onClick={() => handleDelete(s)} className="p-2 text-stone-400 hover:text-rose-600 rounded-lg" aria-label="삭제"><Trash2 className="w-4 h-4" /></button>
+                      <button type="button" onClick={() => setConfirmDeleteId(s.sessionId)} className="p-2 text-stone-400 hover:text-rose-600 rounded-lg" aria-label="삭제"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   )}
                 </header>
+                {confirmDeleteId === s.sessionId && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-rose-50 border border-rose-200 rounded-lg text-sm text-rose-900">
+                    <span>{s.sessionNumber}회차를 삭제할까요? 사진·영상과 함께 지워지고, 완료된 수업이면 PT 잔여 횟수가 복구됩니다.</span>
+                    <span className="flex gap-2">
+                      <button type="button" onClick={() => setConfirmDeleteId(null)} className="px-3 py-1.5 rounded-lg border border-rose-200 bg-white">취소</button>
+                      <button type="button" onClick={() => handleDelete(s)} className="px-3 py-1.5 rounded-lg bg-rose-600 text-white font-semibold">삭제</button>
+                    </span>
+                  </div>
+                )}
                 {note && <p className="text-sm text-stone-900 whitespace-pre-wrap">{note}</p>}
                 <ExerciseList exercises={s.exercises} />
                 <MediaGrid media={s.media} />
@@ -522,7 +541,15 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
 
               <div className="space-y-2">
                 <span className="text-sm font-semibold text-stone-900">사진 · 영상</span>
-                {editing && <MediaGrid media={existingMedia} onRemove={handleRemoveExistingMedia} />}
+                {editing && (
+                  <MediaGrid media={existingMedia.filter((m) => !removedMedia.some((r) => r.mediaId === m.mediaId))} onRemove={handleRemoveExistingMedia} />
+                )}
+                {removedMedia.length > 0 && (
+                  <p className="text-xs text-rose-700 flex items-center justify-between bg-rose-50 rounded-lg px-3 py-2">
+                    <span>{removedMedia.length}개 파일을 [저장]하면 삭제합니다.</span>
+                    <button type="button" onClick={() => setRemovedMedia([])} className="underline">되돌리기</button>
+                  </p>
+                )}
                 {files.length > 0 && (
                   <ul className="text-xs text-stone-600 space-y-1">
                     {files.map((f, i) => (
@@ -533,7 +560,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
                     ))}
                   </ul>
                 )}
-                {existingMedia.length + files.length < MAX_FILES && (
+                {existingMedia.length - removedMedia.length + files.length < MAX_FILES && (
                   <button type="button" onClick={() => fileInput.current?.click()} className="w-full flex items-center justify-center gap-2 py-3 border border-dashed border-stone-300 rounded-xl text-sm text-stone-700">
                     <Camera className="w-4 h-4" /> 사진 · 영상 추가
                   </button>

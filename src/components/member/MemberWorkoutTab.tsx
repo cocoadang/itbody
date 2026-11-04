@@ -1,3 +1,4 @@
+import { confirmDialog } from '../../utils/confirmDialog';
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Flame,
@@ -612,8 +613,8 @@ export const MemberWorkoutTab: React.FC<MemberWorkoutTabProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  if (window.confirm('운동 모드를 종료하고 계획 목록으로 돌아가시겠습니까?')) {
+                onClick={async () => {
+                  if (await confirmDialog('운동 모드를 종료하고 계획 목록으로 돌아가시겠습니까?', '종료')) {
                     setViewMode('assigned');
                   }
                 }}
