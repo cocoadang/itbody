@@ -1,3 +1,4 @@
+import { MemberPlanEditor } from './journal/MemberPlanCard';
 import { confirmDialog } from '../utils/confirmDialog';
 import { KakaoInvite } from './KakaoLogin';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -79,7 +80,8 @@ import {
   RotateCcw,
   KeyRound,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  ClipboardList
 } from 'lucide-react';
 import { MemberPortal } from './member/MemberPortal';
 import { provisionAccount, generateResetPasswordLink } from '../services/adminAccountService';
@@ -92,6 +94,7 @@ interface MemberDetailViewProps {
 }
 
 export type DetailTab =
+  | 'plan'
   | 'overview'
   | 'consultation'
   | 'pt-sessions'
@@ -115,6 +118,7 @@ const SHOW_LEGACY_SECTIONS: boolean = false;
 
 const TABS: TabDefinition[] = [
   { id: 'pt-sessions', label: '수업 일지', icon: Dumbbell, isImplemented: true, phase: 'Journal', description: '회차별 메모·운동·사진/영상·회원 댓글' },
+  { id: 'plan', label: '관리 계획', icon: ClipboardList, isImplemented: true, phase: 'Plan', description: '목표·주간 계획·영양·유산소' },
   { id: 'body-changes', label: '신체 변화', icon: Activity, isImplemented: true, phase: 'Body', description: '체중·체성분 변화 그래프' },
   { id: 'overview', label: '회원 정보', icon: Layers, isImplemented: true, phase: 'Info', description: '회원 기본 정보와 PT 이용권' }
 ];
@@ -235,15 +239,17 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
     fetchMember();
   }, [fetchMember]);
 
-  // After a journal save only sessions and PT passes change.
+  // After a journal save: sessions, PT passes and (when body composition was entered) measurements.
   const refreshJournal = async () => {
     if (!currentUser || !member) return;
-    const [contractsData, sessionsData] = await Promise.all([
+    const [contractsData, sessionsData, measurementsData] = await Promise.all([
       getContractsByMember(currentUser.centerId, member.memberId, currentUser.role, currentUser.trainerId),
-      getSessionsByMember(currentUser.centerId, member.memberId, currentUser.role, currentUser.trainerId)
+      getSessionsByMember(currentUser.centerId, member.memberId, currentUser.role, currentUser.trainerId),
+      getBodyMeasurements(currentUser.centerId, member.memberId, currentUser.role, currentUser.trainerId)
     ]);
     setContracts(contractsData);
     setSessions(sessionsData);
+    setMeasurements(measurementsData);
   };
 
   const refreshTimelineAndGoals = async () => {
@@ -1430,6 +1436,14 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
             contracts={contracts}
             trainerName={assignedTrainer?.name}
             onSessionUpdated={refreshJournal}
+          />
+        )}
+
+        {activeTab === 'plan' && (
+          <MemberPlanEditor
+            memberId={member.memberId}
+            canEdit={currentUser?.role === 'CENTER_ADMIN' || (currentUser?.role === 'TRAINER' && !!currentUser.trainerId && member.trainerId === currentUser.trainerId)}
+            weightKg={[...measurements].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt)).find((m) => m.weightKg)?.weightKg}
           />
         )}
 

@@ -234,8 +234,34 @@ export interface PtSession {
   nextSessionGoal?: string;
   exercises: ExerciseRecord[];
   media?: SessionMedia[]; // Photos/videos attached by staff via the journal API
+  muscles?: MuscleGroup[]; // Worked areas shown on the body diagram
+  body?: SessionBodyRecord; // Body composition measured at this session (also saved to bodyMeasurements)
   createdAt: string;
   updatedAt?: string;
+}
+
+export type MuscleGroup =
+  | 'shoulders' | 'chest' | 'biceps' | 'abs' | 'quads'
+  | 'back' | 'triceps' | 'lower_back' | 'glutes' | 'hamstrings' | 'calves';
+
+export interface SessionBodyRecord {
+  weightKg?: number;
+  skeletalMuscleMassKg?: number;
+  bodyFatPercentage?: number;
+  measurementId?: string;
+}
+
+/** Per-member management plan (goals and "body consulting" from the paper journal). */
+export interface MemberPlan {
+  memberId: string;
+  centerId: string;
+  goals: string;
+  weekly: Record<'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun', string>;
+  proteinPerKg: number | null;
+  cardio: string;
+  notes: string;
+  updatedAt: string;
+  updatedByName?: string;
 }
 
 export interface SessionMedia {

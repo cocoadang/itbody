@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { MessageCircle, Play, Send, X } from 'lucide-react';
 import type { ExerciseRecord, SessionComment, SessionMedia } from '../../types';
 
@@ -106,6 +106,14 @@ export const CommentThread: React.FC<{
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const boxRef = useRef<HTMLTextAreaElement>(null);
+  // Grow with the text: one line when short, more lines as needed (capped at ~5 lines).
+  useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  }, [text]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,17 +156,18 @@ export const CommentThread: React.FC<{
       {onSubmit && !disabledReason && (
         <form onSubmit={submit} className="flex items-end gap-2">
           <textarea
-            rows={2}
+            ref={boxRef}
+            rows={1}
             value={text}
             maxLength={1000}
             onChange={(e) => setText(e.target.value)}
             placeholder={viewer === 'MEMBER' ? '소감이나 불편했던 점을 남겨주세요' : '회원에게 답글 남기기'}
-            className="flex-1 min-w-0 px-3 py-2 text-sm leading-5 border border-stone-300 rounded-xl focus:outline-none focus:ring-1 focus:ring-stone-800 resize-none"
+            className="flex-1 min-w-0 px-3 py-2 text-sm leading-5 border border-stone-300 rounded-xl focus:outline-none focus:ring-1 focus:ring-stone-800 resize-none overflow-y-auto"
           />
           <button
             type="submit"
             disabled={busy || !text.trim()}
-            className="h-10 px-3 rounded-xl bg-stone-900 text-white text-sm font-semibold disabled:opacity-40 flex items-center gap-1"
+            className="h-[38px] shrink-0 px-3 rounded-xl bg-stone-900 text-white text-sm font-semibold disabled:opacity-40 flex items-center gap-1"
           >
             <Send className="w-4 h-4" />
             <span className="sr-only sm:not-sr-only">{busy ? '등록 중' : '등록'}</span>

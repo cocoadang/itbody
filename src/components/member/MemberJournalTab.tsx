@@ -3,6 +3,7 @@ import { Search } from 'lucide-react';
 import type { PtSession, SessionComment } from '../../types';
 import { addSessionComment, getSessionComments } from '../../services/journalService';
 import { CommentCount, CommentThread, ExerciseList, MediaGrid, formatSessionDate, matchesSearch, sessionNote } from '../journal/JournalParts';
+import { BodyMap } from '../journal/BodyMap';
 
 interface MemberJournalTabProps {
   memberId: string;
@@ -70,7 +71,13 @@ export const MemberJournalTab: React.FC<MemberJournalTabProps> = ({ memberId, se
               <CommentCount count={sc.length} />
             </header>
             {note && <p className="text-sm text-stone-900 whitespace-pre-wrap">{note}</p>}
+            {s.body && (s.body.weightKg || s.body.skeletalMuscleMassKg || s.body.bodyFatPercentage) && (
+              <p className="text-xs text-stone-600 bg-stone-50 rounded-lg px-3 py-1.5">
+                {[s.body.weightKg && `체중 ${s.body.weightKg}kg`, s.body.skeletalMuscleMassKg && `골격근량 ${s.body.skeletalMuscleMassKg}kg`, s.body.bodyFatPercentage && `체지방률 ${s.body.bodyFatPercentage}%`].filter(Boolean).join(' · ')}
+              </p>
+            )}
             <ExerciseList exercises={s.exercises} />
+            {s.muscles && s.muscles.length > 0 && <BodyMap selected={s.muscles} className="w-48" />}
             <MediaGrid media={s.media} />
             <div className="border-t border-stone-100 pt-3">
               <CommentThread

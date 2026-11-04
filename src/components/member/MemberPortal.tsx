@@ -46,9 +46,11 @@ export type MemberPortalTab = 'home' | 'sessions' | 'body';
 interface MemberPortalProps {
   memberIdOverride?: string | null;
   onLogout?: () => void;
+  /** Shown in the profile menu only for members linked to more than one center. */
+  onSwitchCenter?: () => void;
 }
 
-export const MemberPortal: React.FC<MemberPortalProps> = ({ memberIdOverride, onLogout }) => {
+export const MemberPortal: React.FC<MemberPortalProps> = ({ memberIdOverride, onLogout, onSwitchCenter }) => {
   const { currentUser, currentCenterName, logout } = useAuth();
   const effectiveMemberId = memberIdOverride || currentUser?.memberId;
 
@@ -255,6 +257,24 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ memberIdOverride, on
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-stone-400" />
                     </button>
+
+                    {onSwitchCenter && (
+                      <button
+                        type="button"
+                        id="btn-member-switch-center"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          onSwitchCenter();
+                        }}
+                        className="w-full min-h-[44px] px-3 py-2 text-left text-xs font-semibold text-stone-700 hover:bg-stone-100 hover:text-stone-900 rounded-xl flex items-center justify-between transition-colors cursor-pointer active:bg-stone-100"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <RefreshCw className="w-4 h-4 text-stone-500" />
+                          <span>센터 변경</span>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-stone-400" />
+                      </button>
+                    )}
 
                     <button
                       type="button"

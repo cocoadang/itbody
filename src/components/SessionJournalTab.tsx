@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Edit2, Plus, Search, Trash2, X, AlertCircle, FileCheck } from 'lucide-react';
-import type { ExerciseRecord, ExerciseSet, Member, PtContract, PtSession, SessionComment, SessionMedia, SessionStatus } from '../types';
+import type { ExerciseRecord, ExerciseSet, Member, MuscleGroup, PtContract, PtSession, SessionBodyRecord, SessionComment, SessionMedia, SessionStatus } from '../types';
 import {
+  createBodyMeasurement,
   createPtSession,
   deletePtSession,
+  updateBodyMeasurement,
   getExercises,
   getPriorityContract,
   getSessionsByMember,
@@ -29,6 +31,7 @@ import {
   sessionNote,
   summarizeSets
 } from './journal/JournalParts';
+import { ALL_MUSCLES, BodyMap, musclesForExercise } from './journal/BodyMap';
 
 interface SessionJournalTabProps {
   member: Member;
@@ -40,15 +43,21 @@ interface SessionJournalTabProps {
 }
 
 // The center's exercise list rarely changes; read it once per page instead of per member.
-const libraryCache = new Map<string, Promise<string[]>>();
+type Library = { names: string[]; parts: Record<string, string> };
+const libraryCache = new Map<string, Promise<Library>>();
 function loadLibrary(centerId: string) {
   if (!libraryCache.has(centerId)) {
     libraryCache.set(centerId, getExercises(centerId)
-      .then((list) => [...new Set([...DEFAULT_EXERCISES, ...list.map((e) => e.name)])])
-      .catch(() => { libraryCache.delete(centerId); return DEFAULT_EXERCISES; }));
+      .then((list) => ({
+        names: [...new Set([...DEFAULT_EXERCISES, ...list.map((e) => e.name)])],
+        parts: Object.fromEntries(list.map((e) => [e.name, e.bodyPart || '']))
+      }))
+      .catch(() => { libraryCache.delete(centerId); return { names: DEFAULT_EXERCISES, parts: {} }; }));
   }
   return libraryCache.get(centerId)!;
 }
+
+const num = (v: string) => { const n = parseFloat(v); return Number.isFinite(n) && n > 0 ? Math.round(n * 10) / 10 : undefined; };
 
 const DEFAULT_EXERCISES = ['스쿼트', '데드리프트', '벤치프레스', '랫풀다운', '레그프레스', '숄더프레스', '시티드 로우', '런지', '힙쓰러스트', '플랭크'];
 const MAX_FILES = 12;
@@ -92,6 +101,12 @@ function fromDraft(d: DraftExercise): ExerciseRecord {
   return { exerciseName: d.name.trim(), sets, ...(d.memo ? { memo: d.memo } : {}) };
 }
 
+const BodyLine: React.FC<{ body: SessionBodyRecord }> = ({ body }) => (
+  <p className="text-xs text-stone-600 bg-stone-50 rounded-lg px-3 py-1.5">
+    {[body.weightKg && `체중 ${body.weightKg}kg`, body.skeletalMuscleMassKg && `골격근량 ${body.skeletalMuscleMassKg}kg`, body.bodyFatPercentage && `체지방률 ${body.bodyFatPercentage}%`].filter(Boolean).join(' · ')}
+  </p>
+);
+
 export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, sessions: sessionsProp, contracts, trainerName = '담당 트레이너', onSessionUpdated }) => {
   const { currentUser } = useAuth();
   // Local copy so media removals show immediately; replaced whenever the parent reloads.
@@ -100,6 +115,12 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
   const [comments, setComments] = useState<SessionComment[]>([]);
   const [commentsError, setCommentsError] = useState<string | null>(null);
   const [library, setLibrary] = useState<string[]>(DEFAULT_EXERCISES);
+  const [bodyParts, setBodyParts] = useState<Record<string, string>>({});
+  // Body composition (paper journal header) and worked areas (body diagram).
+  const [bodyWeight, setBodyWeight] = useState('');
+  const [bodyMuscle, setBodyMuscle] = useState('');
+  const [bodyFat, setBodyFat] = useState('');
+  const [muscleOverride, setMuscleOverride] = useState<Partial<Record<MuscleGroup, boolean>>>({});
   const [query, setQuery] = useState('');
 
   // Form
@@ -145,7 +166,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
 
   useEffect(() => {
     loadComments();
-    loadLibrary(member.centerId).then(setLibrary);
+    loadLibrary(member.centerId).then((lib) => { setLibrary(lib.names); setBodyParts(lib.parts); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [member.memberId, member.centerId]);
 
@@ -154,6 +175,15 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
     comments.forEach((c) => (map[c.sessionId] ||= []).push(c));
     return map;
   }, [comments]);
+
+  const autoMuscles = (names: string[]) => {
+    const set = new Set<MuscleGroup>();
+    names.forEach((n) => musclesForExercise(n, bodyParts[n]).forEach((m) => set.add(m)));
+    return set;
+  };
+  const autoSet = autoMuscles(exercises.map((e) => e.name));
+  const finalMuscles = ALL_MUSCLES.filter((m) => (muscleOverride[m] ?? autoSet.has(m)));
+  const toggleMuscle = (m: MuscleGroup) => setMuscleOverride((prev) => ({ ...prev, [m]: !(prev[m] ?? autoSet.has(m)) }));
 
   const activeContract = getPriorityContract(contracts);
   const remaining = activeContract ? activeContract.totalSessions - activeContract.usedSessions : null;
@@ -181,6 +211,8 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
     setContractId(activeContract?.contractId || contracts[0]?.contractId || '');
     setMemo('');
     setExercises([]);
+    setMuscleOverride({});
+    setBodyWeight(''); setBodyMuscle(''); setBodyFat('');
     setFiles([]);
     setExistingMedia([]);
     setRemovedMedia([]);
@@ -197,6 +229,13 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
     setContractId(s.contractId || activeContract?.contractId || '');
     setMemo(sessionNote(s));
     setExercises((s.exercises || []).map(toDraft));
+    // Keep exactly the areas saved before, even where they differ from the automatic guess.
+    const auto = autoMuscles((s.exercises || []).map((e) => e.exerciseName));
+    const saved = new Set(s.muscles || []);
+    setMuscleOverride(s.muscles ? Object.fromEntries(ALL_MUSCLES.filter((m) => saved.has(m) !== auto.has(m)).map((m) => [m, saved.has(m)])) : {});
+    setBodyWeight(s.body?.weightKg?.toString() || '');
+    setBodyMuscle(s.body?.skeletalMuscleMassKg?.toString() || '');
+    setBodyFat(s.body?.bodyFatPercentage?.toString() || '');
     setFiles([]);
     setExistingMedia(s.media || []);
     setRemovedMedia([]);
@@ -240,6 +279,32 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
     if (!contractId) return setError('등록된 PT 이용권이 없습니다. [회원 정보]에서 이용권을 먼저 등록해주세요.');
     setError('');
     setSaving(true);
+    // Body composition goes to the body-change graph as well as to this session.
+    let body: SessionBodyRecord | undefined;
+    const values = { weightKg: num(bodyWeight), skeletalMuscleMassKg: num(bodyMuscle), bodyFatPercentage: num(bodyFat) };
+    const hasBody = Object.values(values).some((v) => v !== undefined);
+    try {
+      const prevId = editing?.body?.measurementId;
+      if (hasBody) {
+        const clean = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined)) as Partial<SessionBodyRecord>;
+        if (prevId) {
+          await updateBodyMeasurement(member.centerId, prevId, { ...values, measuredAt: date }, currentUser.role, currentUser.trainerId);
+          body = { ...clean, measurementId: prevId };
+        } else {
+          const m = await createBodyMeasurement(
+            { centerId: member.centerId, memberId: member.memberId, trainerId: member.trainerId, measuredAt: date, ...clean, memo: `${sessionNumber}회차 수업 기록` },
+            currentUser.role,
+            currentUser.trainerId
+          );
+          body = { ...clean, measurementId: m.measurementId };
+        }
+      } else if (prevId) {
+        body = { measurementId: prevId }; // values cleared here; the measurement itself stays in 신체 변화
+      }
+    } catch (err: any) {
+      setSaving(false);
+      return setError(`체성분 기록을 저장하지 못했습니다: ${err?.message || ''}`);
+    }
     const fields = {
       sessionNumber,
       date,
@@ -247,7 +312,9 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
       contractId,
       trainerFeedback: memo.trim(),
       nextSessionGoal: '',
-      exercises: exercises.filter((x) => x.name.trim()).map(fromDraft)
+      exercises: exercises.filter((x) => x.name.trim()).map(fromDraft),
+      muscles: finalMuscles,
+      ...(body ? { body } : {})
     };
     try {
       let sessionId = editing?.sessionId;
@@ -397,7 +464,11 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
                   </div>
                 )}
                 {note && <p className="text-sm text-stone-900 whitespace-pre-wrap">{note}</p>}
-                <ExerciseList exercises={s.exercises} />
+                {s.body && (s.body.weightKg || s.body.skeletalMuscleMassKg || s.body.bodyFatPercentage) && <BodyLine body={s.body} />}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1"><ExerciseList exercises={s.exercises} /></div>
+                  {s.muscles && s.muscles.length > 0 && <BodyMap selected={s.muscles} className="w-40 shrink-0" />}
+                </div>
                 <MediaGrid media={s.media} />
                 {(s.internalNote || s.sessionNotes) && (
                   <p className="text-xs text-stone-500 bg-stone-50 rounded-lg px-3 py-2 whitespace-pre-wrap">이전 내부 메모: {s.internalNote || s.sessionNotes}</p>
@@ -463,6 +534,19 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
                   </select>
                 </label>
               )}
+
+              <div>
+                <span className="text-sm font-semibold text-stone-900">체성분</span>
+                <span className="text-xs text-stone-500 ml-2">선택 · 입력하면 신체 변화 그래프에도 저장됩니다</span>
+                <div className="grid grid-cols-3 gap-2 mt-1.5">
+                  {([['체중(kg)', bodyWeight, setBodyWeight], ['골격근량(kg)', bodyMuscle, setBodyMuscle], ['체지방률(%)', bodyFat, setBodyFat]] as const).map(([label, value, set]) => (
+                    <label key={label} className="text-[11px] text-stone-500">
+                      {label}
+                      <input inputMode="decimal" value={value} onChange={(e) => set(e.target.value.replace(/[^0-9.]/g, ''))} className="mt-0.5 w-full px-2 py-2 text-sm border border-stone-300 rounded-lg" />
+                    </label>
+                  ))}
+                </div>
+              </div>
 
               <label className="block">
                 <span className="text-sm font-semibold text-stone-900">수업 메모</span>
@@ -537,6 +621,12 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
                     })}
                   </ul>
                 )}
+              </div>
+
+              <div className="space-y-1">
+                <span className="text-sm font-semibold text-stone-900">운동 부위</span>
+                <span className="text-xs text-stone-500 ml-2">운동을 고르면 자동으로 표시 · 그림을 눌러 고칠 수 있어요</span>
+                <BodyMap selected={finalMuscles} onToggle={toggleMuscle} className="max-w-xs" />
               </div>
 
               <div className="space-y-2">

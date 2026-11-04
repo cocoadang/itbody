@@ -1,5 +1,5 @@
 import { auth } from '../firebase/config';
-import type { SessionComment, SessionMedia } from '../types';
+import type { MemberPlan, SessionComment, SessionMedia } from '../types';
 
 async function journalApi<T>(path: string, body?: unknown): Promise<T> {
   const token = await auth?.currentUser?.getIdToken();
@@ -26,6 +26,12 @@ export const markSessionCommentsRead = (memberId: string) =>
 
 export const getUnreadSessionComments = () =>
   journalApi<{ comments: SessionComment[] }>('/api/journal/unread').then((r) => r.comments);
+
+export const getMemberPlan = (memberId: string) =>
+  journalApi<{ plan: MemberPlan | null }>(`/api/journal/plan?memberId=${encodeURIComponent(memberId)}`).then((r) => r.plan);
+
+export const saveMemberPlan = (memberId: string, plan: Pick<MemberPlan, 'goals' | 'weekly' | 'proteinPerKg' | 'cardio' | 'notes'>) =>
+  journalApi<{ plan: MemberPlan }>('/api/journal/plan', { memberId, plan }).then((r) => r.plan);
 
 export const removeSessionMedia = (sessionId: string, mediaId: string) =>
   journalApi<{ removed: boolean }>('/api/journal/media/remove', { sessionId, mediaId });

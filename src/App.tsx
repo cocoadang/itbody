@@ -95,11 +95,12 @@ function MainApp() {
         {/* Top Tenant & RBAC Verification Toolbar (DEV mode only) */}
         <TenantVerificationBar onDataChanged={handleDataChanged} />
 
-        {/* Only members linked to more than one center need to switch centers. */}
-        {memberAccount && memberships.length > 1 && <div className="max-w-md w-full mx-auto px-4 pt-3 text-right"><button type="button" onClick={() => setShowMemberAccess(true)} className="text-xs text-stone-500 underline">센터 변경</button></div>}
         {/* Dedicated Member Mobile Portal */}
         <Suspense fallback={<ScreenLoading />}>
-          <MemberPortal key={`member-portal-${currentUser.memberId}-${currentUser.centerId}-${refreshKey}`} />
+          <MemberPortal
+            key={`member-portal-${currentUser.memberId}-${currentUser.centerId}-${refreshKey}`}
+            onSwitchCenter={memberAccount && memberships.length > 1 ? () => setShowMemberAccess(true) : undefined}
+          />
         </Suspense>
 
         <LoginModal

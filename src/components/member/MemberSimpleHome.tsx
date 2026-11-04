@@ -3,6 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import type { BodyMeasurement, Member, PtContract, PtSession } from '../../types';
 import { getPriorityContract } from '../../services/dataService';
 import { formatSessionDate, sessionNote } from '../journal/JournalParts';
+import { MemberPlanSummary } from '../journal/MemberPlanCard';
 
 interface Props {
   member: Member;
@@ -37,6 +38,8 @@ export const MemberSimpleHome: React.FC<Props> = ({ member, contracts, sessions,
         )}
         {upcoming && <p className="mt-2 text-xs text-stone-300">다음 수업 예정: {formatSessionDate(upcoming.date)} {upcoming.time}</p>}
       </section>
+
+      <MemberPlanSummary memberId={member.memberId} weightKg={[...measurements].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt)).find((m) => m.weightKg)?.weightKg} />
 
       <button type="button" onClick={() => onOpenSession(latest || null)} className="w-full text-left bg-white rounded-2xl border border-stone-200 p-4">
         <div className="flex items-center justify-between">

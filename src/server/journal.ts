@@ -112,6 +112,26 @@ async function withCaller(req: Request, res: Response, run: (caller: Caller) => 
 
 const sessionRef = (id: string) => getFirebaseAdmin()!.db.doc(`ptSessions/${id}`);
 
+export const PLAN_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
+
+/** Validates a management plan from the trainer; returns null when anything is out of bounds. */
+export function cleanPlan(input: any) {
+  if (!input || typeof input !== 'object') return null;
+  const text = (v: unknown, max: number) => (v === undefined || v === null || v === '' ? '' : typeof v === 'string' && v.length <= max ? v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim() : null);
+  const goals = text(input.goals, 1000), cardio = text(input.cardio, 500), notes = text(input.notes, 2000);
+  if (goals === null || cardio === null || notes === null) return null;
+  const weekly: Record<string, string> = {};
+  for (const d of PLAN_DAYS) {
+    const v = text(input.weekly?.[d], 20);
+    if (v === null) return null;
+    weekly[d] = v;
+  }
+  const p = input.proteinPerKg;
+  const proteinPerKg = p === null || p === undefined || p === '' ? null : typeof p === 'number' && p >= 0.5 && p <= 3 ? Math.round(p * 10) / 10 : undefined;
+  if (proteinPerKg === undefined) return null;
+  return { goals, weekly, proteinPerKg, cardio, notes };
+}
+
 function commentView(id: string, c: any) {
   return { commentId: id, sessionId: c.sessionId, sessionNumber: c.sessionNumber, memberId: c.memberId, authorRole: c.authorRole,
     authorName: c.authorName, text: c.text, createdAt: c.createdAt, readByStaffAt: c.readByStaffAt || null };
@@ -176,6 +196,30 @@ export function registerJournal(app: Express) {
     const items = snap.docs.map(d => ({ ...commentView(d.id, d.data()), memberName: d.data().authorName }))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     res.json({ comments: items });
+  }));
+
+  // Per-member management plan (goals, weekly split, nutrition, cardio).
+  app.get('/api/journal/plan', (req, res) => withCaller(req, res, async caller => {
+    const memberId = req.query.memberId;
+    if (!safeId(memberId)) return deny(res, 400, '회원을 지정해주세요.');
+    const db = getFirebaseAdmin()!.db;
+    const [member, plan] = await Promise.all([db.doc(`members/${memberId}`).get(), db.doc(`memberPlans/${memberId}`).get()]);
+    if (!canAccessMember(caller, member.data(), memberId)) return deny(res);
+    const data = plan.data();
+    res.json({ plan: data && data.centerId === caller.centerId ? data : null });
+  }));
+
+  app.post('/api/journal/plan', (req, res) => withCaller(req, res, async caller => {
+    const { memberId } = req.body || {};
+    if (caller.role === 'MEMBER' || !safeId(memberId)) return deny(res);
+    const clean = cleanPlan(req.body?.plan);
+    if (!clean) return deny(res, 400, '입력 내용을 확인해주세요. (목표 1000자, 메모 2000자, 단백질 0.5~3g 이내)');
+    const db = getFirebaseAdmin()!.db;
+    const member = (await db.doc(`members/${memberId}`).get()).data();
+    if (!canAccessMember(caller, member, memberId)) return deny(res);
+    const plan = { ...clean, memberId, centerId: caller.centerId, updatedAt: now(), updatedByName: caller.name || '트레이너', updatedBy: caller.uid };
+    await db.doc(`memberPlans/${memberId}`).set(plan);
+    res.json({ plan });
   }));
 
   // Photos/videos: the browser uploads straight to Cloud Storage through a one-time resumable
