@@ -39,6 +39,21 @@ The route test replaces all Firebase/account/rate-limit imports at bundle time a
 
 Existing project uses Blaze. This plan avoids a new load balancer but is not a promise of zero usage charges. Any new paid commitment requires approval.
 
+## Provisioning status (2026-11-04)
+
+- Firebase CLI reauthentication completed; project access verified.
+- Created dedicated Hosting site `itbody-cocoadang`; it is awaiting its first release.
+- Added `itbody.dsoom.com` to that site. Firebase issued CNAME `itbody.dsoom.com` -> `itbody-cocoadang.web.app`. DNS and TLS are pending.
+- Hosting.kr's owned-domain page still redirects to login in the automation browser. Do not infer login from another browser's session.
+- `firebase.itbody-hosting.json` is an explicit, Hosting-only configuration. Its empty public directory deliberately excludes server bundles, source maps and source files from static hosting. All requests rewrite to the existing Cloud Run service.
+- Do not deploy this config until the compatible Cloud Run revision and Kakao callback settings have been prepared and verified. The configuration has not been deployed.
+
+After the gates above, the targeted command is:
+
+```
+firebase deploy --config firebase.itbody-hosting.json --only hosting --project gen-lang-client-0064554427
+```
+
 References:
 - https://firebase.google.com/docs/hosting/manage-cache
 - https://firebase.google.com/docs/hosting/cloud-run
