@@ -1,0 +1,70 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Phase 4 & 5: Member Progress Photos
+    // Path: centers/{centerId}/members/{memberId}/photos/{photoFile}
+    match /centers/{centerId}/members/{memberId}/photos/{photoFile} {
+      function getUserDoc() {
+        return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
+      }
+
+      function getMemberDoc() {
+        return firestore.get(/databases/(default)/documents/members/$(memberId));
+      }
+
+      function isAuthenticated() {
+        return request.auth != null;
+      }
+
+      // CENTER_ADMIN: 같은 센터 소속 관리자
+      function isCenterAdmin() {
+        return isAuthenticated() &&
+               getUserDoc().data.role == 'CENTER_ADMIN' &&
+               getUserDoc().data.centerId == centerId;
+      }
+
+      // 담당 TRAINER: 같은 센터 소속 + 해당 memberId의 실제 배정 담당 트레이너
+      function isAssignedTrainer() {
+        return isAuthenticated() &&
+               getUserDoc().data.role == 'TRAINER' &&
+               getUserDoc().data.centerId == centerId &&
+               getMemberDoc().data.centerId == centerId &&
+               getMemberDoc().data.trainerId == getUserDoc().data.trainerId;
+      }
+
+      // 회원의 사진 촬영·보관 동의가 현재 유효한지 검증 (progressPhotoConsent.granted == true)
+      function isMemberConsentActive() {
+        return ('progressPhotoConsent' in getMemberDoc().data) &&
+               getMemberDoc().data.progressPhotoConsent.granted == true;
+      }
+
+      // 본인 회원: 본인 사진만 read 가능 (write 권한 일체 부여하지 않음)
+      function isOwnerMember() {
+        return isAuthenticated() &&
+               getUserDoc().data.role == 'MEMBER' &&
+               getUserDoc().data.centerId == centerId &&
+               getUserDoc().data.memberId == memberId;
+      }
+
+      // Read: CENTER_ADMIN(같은 센터), 담당 TRAINER(담당 회원만), MEMBER(본인 사진만 read)
+      allow read: if isCenterAdmin() || isAssignedTrainer() || isOwnerMember();
+
+      // Upload (Create/Update):
+      // 1. CENTER_ADMIN 또는 담당 TRAINER만 허용 (MEMBER write 불가, 타 트레이너 불가, 타 센터 불가)
+      // 2. 회원의 사진 보관 동의가 현재 유효한 상태(isMemberConsentActive) 필수
+      // 3. 파일 크기 10MB 이하
+      // 4. contentType이 image/* 형식인 경우만 허용
+      allow write: if (
+                     (isCenterAdmin() || isAssignedTrainer()) &&
+                     isMemberConsentActive() &&
+                     request.resource.size < 10 * 1024 * 1024 &&
+                     request.resource.contentType.matches('image/.*')
+                   );
+
+      // Delete: CENTER_ADMIN 또는 담당 TRAINER만 허용
+      allow delete: if isCenterAdmin() || isAssignedTrainer();
+    }
+  }
+}
+
+
