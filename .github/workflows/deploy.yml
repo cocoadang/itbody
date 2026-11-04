@@ -1,0 +1,170 @@
+name: Validate and deploy ITBODY
+# Validation runs on every push to main and every pull request.
+# Production deployment runs ONLY on "Run workflow" (workflow_dispatch) on main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+
+# Filled in from ops/setup-github-deploy.sh output (one-time GCP setup).
+env:
+  GCP_PROJECT_ID: gen-lang-client-0064554427
+  GCP_PROJECT_NUMBER: ''
+  GCP_REGION: asia-south1
+  CLOUD_RUN_SERVICE: pt-journey
+  AR_REPO: itbody-images
+  HOSTING_SITE: itbody-cocoadang
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run lint
+      # Offline tests only (no network, model or database).
+      - run: node --import tsx tests/kakao-hosting-verification.ts
+      - run: node --import tsx tests/ai-generation-verification.ts
+      - run: node tests/kakao-hosting-routes.mjs
+      - run: node tests/ai-timeout-routes.mjs
+      - run: npm run build
+
+  deploy:
+    needs: validate
+    if: github.repository == 'cocoadang/itbody' && github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    concurrency:
+      group: itbody-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check deploy configuration
+        run: |
+          for v in GCP_PROJECT_ID GCP_PROJECT_NUMBER GCP_REGION CLOUD_RUN_SERVICE HOSTING_SITE; do
+            [ -n "${!v}" ] || { echo "::error::$v is empty. Run ops/setup-github-deploy.sh and fill the workflow env."; exit 1; }
+          done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build image (clean Linux build)
+        run: |
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/itbody:${GITHUB_SHA}"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          docker build -t "$IMAGE" .
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          workload_identity_provider: projects/${{ env.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/itbody-github/providers/github-main
+          service_account: itbody-github-deploy@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+      - name: Push image
+        run: |
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+          docker push "$IMAGE"
+      - name: Deploy candidate without traffic
+        # The service was created from source by AI Studio, which left source/build
+        # annotations that block an image-only deploy. Export the live spec, drop only those
+        # annotations, swap the image, and pin current traffic while the new revision gets
+        # the "candidate" tag. Env vars, secrets, service account, port, scaling and timeout
+        # are carried over as-is. The exported spec may contain env values: never printed.
+        run: |
+          gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT_ID" \
+            --format=export > /tmp/service.yaml
+          gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT_ID" \
+            --format=json > /tmp/service.json
+          NEW_REV="${CLOUD_RUN_SERVICE}-${GITHUB_SHA::7}-${GITHUB_RUN_ATTEMPT}"
+          NEW_REV="$NEW_REV" python3 - <<'PY'
+          import json, os, yaml
+          path = '/tmp/service.yaml'
+          svc = yaml.safe_load(open(path))
+          live = json.load(open('/tmp/service.json'))
+          def strip(meta):
+              ann = (meta or {}).get('annotations') or {}
+              removed = [k for k in list(ann) if k.startswith('run.googleapis.com/') and ('source' in k or 'build' in k)]
+              for k in removed: ann.pop(k)
+              return removed
+          removed = strip(svc.get('metadata')) + strip(svc['spec']['template'].get('metadata'))
+          print('removed annotations:', removed)
+          tmpl = svc['spec']['template']
+          tmpl.setdefault('metadata', {})['name'] = os.environ['NEW_REV']
+          containers = tmpl['spec']['containers']
+          assert len(containers) == 1, 'expected a single container'
+          containers[0]['image'] = os.environ['IMAGE']
+          # Keep the live traffic split exactly; drop old candidate tags.
+          traffic = []
+          for t in live['status'].get('traffic', []):
+              if not t.get('percent'): continue
+              e = {'percent': t['percent']}
+              if t.get('revisionName'): e['revisionName'] = t['revisionName']
+              else: e['latestRevision'] = True
+              traffic.append(e)
+          if not traffic:
+              traffic = [{'revisionName': live['status']['latestReadyRevisionName'], 'percent': 100}]
+          traffic.append({'revisionName': os.environ['NEW_REV'], 'tag': 'candidate'})
+          svc['spec']['traffic'] = traffic
+          print('traffic before promotion:', traffic)
+          yaml.safe_dump(svc, open(path, 'w'), sort_keys=False)
+          c = containers[0]; ann = (tmpl.get('metadata') or {}).get('annotations') or {}
+          print('runtime settings:', {
+              'ports': c.get('ports'), 'resources': c.get('resources'),
+              'timeoutSeconds': tmpl['spec'].get('timeoutSeconds'),
+              'annotations': {k: v for k, v in ann.items() if 'autoscaling' in k or 'cpu' in k or 'startup' in k},
+              'envNames': sorted(e['name'] for e in c.get('env', [])),
+          })
+          PY
+          gcloud run services replace /tmp/service.yaml --region "$GCP_REGION" --project "$GCP_PROJECT_ID" --quiet > /dev/null
+          rm -f /tmp/service.yaml /tmp/service.json
+      - name: Verify candidate (read-only)
+        run: |
+          URL="$(gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT_ID" \
+            --format=json | python3 -c "import json,sys; d=json.load(sys.stdin); print(next(t['url'] for t in d['status']['traffic'] if t.get('tag')=='candidate'))")"
+          echo "candidate: $URL"
+          for i in 1 2 3 4 5 6; do
+            code="$(curl -s -o /tmp/health.json -w '%{http_code}' "$URL/api/health" || true)"
+            [ "$code" = 200 ] && break; sleep 10
+          done
+          [ "$code" = 200 ] || { echo "::error::health $code"; exit 1; }
+          python3 -c "import json; h=json.load(open('/tmp/health.json')); assert h.get('status')=='ok', h"
+          curl -sf "$URL/api/auth/kakao/status" > /dev/null
+          curl -sf "$URL/" | grep -q '<div id="root">'
+          for p in /server.cjs /server.cjs.map /dist/server.cjs; do
+            c="$(curl -s -o /dev/null -w '%{http_code}' "$URL$p")"
+            if [ "$c" = 200 ] && curl -s "$URL$p" | grep -q 'require('; then echo "::error::server bundle exposed at $p"; exit 1; fi
+          done
+      - name: Promote candidate to 100% traffic
+        run: |
+          gcloud run services update-traffic "$CLOUD_RUN_SERVICE" --region "$GCP_REGION" \
+            --project "$GCP_PROJECT_ID" --to-tags candidate=100 --quiet
+          gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT_ID" \
+            --format='value(status.latestReadyRevisionName,status.url)'
+      - name: Deploy Hosting (itbody.dsoom.com)
+        run: |
+          mkdir -p hosting-public
+          npx --yes firebase-tools@14 deploy --config firebase.itbody-hosting.json \
+            --only "hosting:${HOSTING_SITE}" --project "$GCP_PROJECT_ID" --non-interactive \
+            -m "github ${GITHUB_SHA::7}"
+      - name: Verify Hosting
+        run: |
+          for host in "https://${HOSTING_SITE}.web.app" "https://itbody.dsoom.com"; do
+            ok=0
+            for i in 1 2 3 4 5 6; do
+              code="$(curl -s -o /tmp/h.json -w '%{http_code}' "$host/api/health" || true)"
+              [ "$code" = 200 ] && { ok=1; break; }; sleep 10
+            done
+            [ "$ok" = 1 ] || { echo "::error::$host health $code"; exit 1; }
+            curl -sf "$host/" | grep -q '<div id="root">'
+            echo "$host OK"
+          done
