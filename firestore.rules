@@ -1,0 +1,444 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function hasUserDoc() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        (!request.auth.token.get('portalAccount', false) || validPortalMembership());
+    }
+
+    // Selected center is a server-issued session claim, validated against a server-owned binding.
+    // An unapproved Kakao account has no binding and therefore no tenant-data access.
+    function validPortalMembership() {
+      let centerId = request.auth.token.get('portalCenterId', '');
+      let memberId = request.auth.token.get('portalMemberId', '');
+      let binding = get(/databases/$(database)/documents/memberAccounts/$(request.auth.uid)/centers/$(centerId)).data;
+      let account = get(/databases/$(database)/documents/memberAccounts/$(request.auth.uid)).data;
+      let member = get(/databases/$(database)/documents/members/$(memberId)).data;
+      return centerId != '' && memberId != '' && account.status == 'ACTIVE' &&
+        binding.status == 'ACTIVE' && binding.role == 'MEMBER' && binding.uid == request.auth.uid &&
+        binding.centerId == centerId && binding.memberId == memberId &&
+        member.portalUid == request.auth.uid && member.centerId == centerId;
+    }
+    function getUserData() {
+      return request.auth.token.get('portalAccount', false) ?
+        get(/databases/$(database)/documents/memberAccounts/$(request.auth.uid)/centers/$(request.auth.token.portalCenterId)).data :
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isCenterAdmin(centerId) {
+      return isAuthenticated() && !request.auth.token.get('portalAccount', false) && hasUserDoc() && (
+        getUserData().role == 'CENTER_ADMIN' && getUserData().centerId == centerId
+      );
+    }
+
+    function isTrainer(centerId) {
+      return isAuthenticated() && !request.auth.token.get('portalAccount', false) && hasUserDoc() && (
+        getUserData().role == 'TRAINER' && getUserData().centerId == centerId
+      );
+    }
+
+    function getTrainerId() {
+      return getUserData().trainerId;
+    }
+
+    function getMemberId() {
+      return getUserData().memberId;
+    }
+
+    // Account identity is managed by trusted backend endpoints only.
+    function validTrainerAssignment() {
+      return !('trainerId' in request.resource.data) || request.resource.data.trainerId == null || request.resource.data.trainerId == '' ||
+        get(/databases/$(database)/documents/trainers/$(request.resource.data.trainerId)).data.centerId == request.resource.data.centerId;
+    }
+    function stableOwnership() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['centerId', 'memberId', 'contractId', 'uid', 'kakaoLinked', 'activeInviteHash', 'portalUid']) &&
+        (isCenterAdmin(resource.data.centerId) || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['trainerId', 'assignedTrainerId'])) &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['trainerId']) || validTrainerAssignment());
+    }
+    function validMemberRelation() {
+      return !('memberId' in request.resource.data) ||
+        (get(/databases/$(database)/documents/members/$(request.resource.data.memberId)).data.centerId == request.resource.data.centerId &&
+         (!('trainerId' in request.resource.data) || request.resource.data.trainerId == get(/databases/$(database)/documents/members/$(request.resource.data.memberId)).data.trainerId));
+    }
+    function noAccountOnCreate() {
+      return (!('uid' in request.resource.data) || request.resource.data.uid == null || request.resource.data.uid == '') &&
+        !request.resource.data.keys().hasAny(['kakaoLinked', 'activeInviteHash', 'portalUid']);
+    }
+
+    // User profiles (Single source of truth for identity, role, and tenant)
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || (hasUserDoc() && isCenterAdmin(resource.data.centerId)));
+      allow create, delete: if false;
+      allow update: if stableOwnership() && isAuthenticated() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'phone', 'photoUrl', 'updatedAt']) &&
+        (request.auth.uid == userId || isCenterAdmin(resource.data.centerId));
+    }
+
+    // Centers
+    match /centers/{centerId} {
+      allow read: if isAuthenticated() && hasUserDoc() && (getUserData().centerId == centerId);
+      allow write: if isCenterAdmin(centerId);
+    }
+
+    // Trainers
+    match /trainers/{trainerId} {
+      allow read: if isAuthenticated() && hasUserDoc() && 
+        (getUserData().centerId == resource.data.centerId) &&
+        (getUserData().role == 'CENTER_ADMIN' || getUserData().role == 'TRAINER');
+      allow create: if noAccountOnCreate() && isAuthenticated() && isCenterAdmin(request.resource.data.centerId);
+      allow update: if (!('uid' in resource.data) || resource.data.uid == null || resource.data.uid == '' || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['loginEmail'])) && stableOwnership() && isAuthenticated() && hasUserDoc() && (
+        // 1. CENTER_ADMIN: 소속 센터 트레이너의 운영정보 수정 (centerId 유지)
+        (isCenterAdmin(resource.data.centerId) && request.resource.data.centerId == resource.data.centerId) ||
+        // 2. TRAINER: 본인 일반 프로필 수정 (name, phone, specialty, bio, updatedAt만 허용, role/centerId/trainerId/uid/loginEmail/status 변경 절대 불가)
+        (
+          getUserData().role == 'TRAINER' &&
+          getUserData().centerId == resource.data.centerId &&
+          getUserData().trainerId == trainerId &&
+          resource.data.trainerId == trainerId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'phone', 'specialty', 'bio', 'updatedAt'])
+        )
+      );
+      allow delete: if isAuthenticated() && isCenterAdmin(resource.data.centerId);
+    }
+
+    // Members
+    match /members/{memberId} {
+      allow read: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId()) ||
+        (hasUserDoc() && getUserData().role == 'MEMBER' && resource.data.centerId == getUserData().centerId && (resource.data.memberId == getMemberId() || (resource.data.uid != null && resource.data.uid == request.auth.uid) || request.auth.uid == memberId))
+      );
+      allow create: if validTrainerAssignment() && noAccountOnCreate() && isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        (isTrainer(request.resource.data.centerId) && request.resource.data.trainerId == getTrainerId())
+      );
+      allow update: if stableOwnership() && isAuthenticated() && (
+        // 1. MEMBER 본인: 자신의 progressPhotoConsent 및 updatedAt 만 변경 가능 (다른 필드는 일체 변경 불가)
+        (
+          hasUserDoc() &&
+          getUserData().role == 'MEMBER' && resource.data.centerId == getUserData().centerId &&
+          (resource.data.memberId == getMemberId() || (resource.data.uid != null && resource.data.uid == request.auth.uid) || request.auth.uid == memberId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['progressPhotoConsent', 'updatedAt'])
+        ) ||
+        // 2. CENTER_ADMIN 또는 담당 TRAINER: 회원 정보 수정 가능하나, progressPhotoConsent는 직접 조작 불가!
+        (
+          (
+            isCenterAdmin(resource.data.centerId) ||
+            (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+          ) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['progressPhotoConsent'])
+        )
+      );
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      );
+    }
+
+    // Phase 2: Consultations (최초 상담)
+    match /consultations/{consultationId} {
+      allow read: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId()) ||
+        (hasUserDoc() && getUserData().role == 'MEMBER' && resource.data.centerId == getUserData().centerId && resource.data.memberId == getMemberId())
+      );
+      allow create: if validMemberRelation() && isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        (isTrainer(request.resource.data.centerId) && request.resource.data.trainerId == getTrainerId())
+      );
+      allow update: if validMemberRelation() && stableOwnership() && (isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      ));
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      );
+    }
+
+    // Phase 2: Member Goals (목표 관리)
+    match /memberGoals/{goalId} {
+      allow read: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId()) ||
+        (hasUserDoc() && getUserData().role == 'MEMBER' && resource.data.centerId == getUserData().centerId && resource.data.memberId == getMemberId())
+      );
+      allow create: if validMemberRelation() && isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        (isTrainer(request.resource.data.centerId) && request.resource.data.trainerId == getTrainerId())
+      );
+      allow update: if validMemberRelation() && stableOwnership() && (isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      ));
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      );
+    }
+
+    // Phase 2: PT Contracts (PT 이용권 / 계약)
+    match /ptContracts/{contractId} {
+      allow read: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId()) ||
+        (hasUserDoc() && getUserData().role == 'MEMBER' && resource.data.centerId == getUserData().centerId && resource.data.memberId == getMemberId())
+      );
+      allow create: if validMemberRelation() && isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        (isTrainer(request.resource.data.centerId) && request.resource.data.trainerId == getTrainerId())
+      );
+      allow update: if validMemberRelation() && stableOwnership() && (isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      ));
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      );
+    }
+
+    // Phase 2: PT Sessions & Log (PT 수업 일지 및 일정)
+    match /ptSessions/{sessionId} {
+      allow read: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId()) ||
+        (hasUserDoc() && getUserData().role == 'MEMBER' && resource.data.centerId == getUserData().centerId && resource.data.memberId == getMemberId())
+      );
+      allow create: if validMemberRelation() && isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        (isTrainer(request.resource.data.centerId) && request.resource.data.trainerId == getTrainerId())
+      );
+      allow update: if validMemberRelation() && stableOwnership() && (isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      ));
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      );
+    }
+
+    // Phase 3: Body Measurements (신체변화 / 인바디 / 둘레)
+    match /bodyMeasurements/{measurementId} {
+      allow read: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId()) ||
+        (hasUserDoc() && getUserData().role == 'MEMBER' && resource.data.centerId == getUserData().centerId && resource.data.memberId == getMemberId())
+      );
+      allow create: if validMemberRelation() && isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        (isTrainer(request.resource.data.centerId) && request.resource.data.trainerId == getTrainerId())
+      );
+      allow update: if validMemberRelation() && stableOwnership() && (isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      ));
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      );
+    }
+
+    // Phase 4: Progress Photos (체형 전/후 사진 메타데이터)
+    match /progressPhotos/{photoId} {
+      allow read: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId()) ||
+        (hasUserDoc() && getUserData().role == 'MEMBER' && resource.data.centerId == getUserData().centerId && resource.data.memberId == getMemberId())
+      );
+      allow create: if validMemberRelation() && isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        (isTrainer(request.resource.data.centerId) && request.resource.data.trainerId == getTrainerId())
+      ) && (
+        // 회원 본인의 직접 동의(progressPhotoConsent.granted == true)가 있을 때만 신규 사진 등록 허용
+        'progressPhotoConsent' in get(/databases/$(database)/documents/members/$(request.resource.data.memberId)).data &&
+        get(/databases/$(database)/documents/members/$(request.resource.data.memberId)).data.progressPhotoConsent.granted == true
+      );
+      allow update: if validMemberRelation() && stableOwnership() && (isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      ));
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      );
+    }
+
+    // Phase 4: Progress Reviews (성과 리뷰 및 중간 점검)
+    match /progressReviews/{reviewId} {
+      allow read: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId()) ||
+        (hasUserDoc() && getUserData().role == 'MEMBER' && resource.data.centerId == getUserData().centerId && resource.data.memberId == getMemberId())
+      );
+      allow create: if validMemberRelation() && isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        (isTrainer(request.resource.data.centerId) && request.resource.data.trainerId == getTrainerId())
+      );
+      allow update: if validMemberRelation() && stableOwnership() && (isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      ));
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      );
+    }
+
+    // Phase 5: Trainer Internal Private Notes (MEMBER role is strictly blocked)
+    match /privateTrainerNotes/{noteId} {
+      allow read, delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      );
+      allow update: if validMemberRelation() && stableOwnership() && (isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      ));
+      allow create: if validMemberRelation() && isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        (isTrainer(request.resource.data.centerId) && request.resource.data.trainerId == getTrainerId())
+      );
+    }
+
+    // Phase 6: Exercise Library (운동 라이브러리)
+    match /exercises/{exerciseId} {
+      // Transactions must read an absent document before reserving its name.
+      allow get: if isAuthenticated() && hasUserDoc() &&
+        getUserData().role in ['CENTER_ADMIN', 'TRAINER'] &&
+        !exists(/databases/$(database)/documents/exercises/$(exerciseId));
+      allow read: if isAuthenticated() && hasUserDoc() && (getUserData().centerId == resource.data.centerId);
+      allow create: if isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        isTrainer(request.resource.data.centerId)
+      );
+      allow update: if stableOwnership() && (isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        isTrainer(resource.data.centerId)
+      ));
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        isTrainer(resource.data.centerId)
+      );
+    }
+
+    // Phase 6: Workout Routine Templates (루틴 템플릿)
+    match /workoutTemplates/{templateId} {
+      allow read: if isAuthenticated() && hasUserDoc() && (getUserData().centerId == resource.data.centerId);
+      allow create: if isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        (isTrainer(request.resource.data.centerId) && request.resource.data.trainerId == getTrainerId())
+      );
+      allow update: if stableOwnership() && (isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      ));
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      );
+    }
+
+    // Phase 6: Personal Workout Plans (개인운동 배정)
+    match /personalWorkoutPlans/{planId} {
+      allow read: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId()) ||
+        (hasUserDoc() && getUserData().role == 'MEMBER' && resource.data.centerId == getUserData().centerId && resource.data.memberId == getMemberId())
+      );
+      allow create: if validMemberRelation() && isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        (isTrainer(request.resource.data.centerId) && request.resource.data.trainerId == getTrainerId())
+      );
+      allow update: if validMemberRelation() && stableOwnership() && isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId()) ||
+        (hasUserDoc() && getUserData().role == 'MEMBER' && resource.data.centerId == getUserData().centerId && resource.data.memberId == getMemberId() &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+         request.resource.data.status in ['ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'SKIPPED'])
+      );
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      );
+    }
+
+    // Phase 6: Personal Workout Logs (개인운동 실제 수행 기록)
+    match /personalWorkoutLogs/{logId} {
+      allow read: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId()) ||
+        (hasUserDoc() && getUserData().role == 'MEMBER' && resource.data.centerId == getUserData().centerId && resource.data.memberId == getMemberId())
+      );
+      allow create: if validMemberRelation() && isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        (isTrainer(request.resource.data.centerId) && request.resource.data.trainerId == getTrainerId()) ||
+        (hasUserDoc() && getUserData().role == 'MEMBER' && 
+         request.resource.data.memberId == getMemberId() && 
+         request.resource.data.centerId == getUserData().centerId &&
+         (!('trainerFeedback' in request.resource.data) || request.resource.data.trainerFeedback == null || request.resource.data.trainerFeedback == ''))
+      );
+      allow update: if validMemberRelation() && stableOwnership() && isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId()) ||
+        (hasUserDoc() && getUserData().role == 'MEMBER' && resource.data.centerId == getUserData().centerId && resource.data.memberId == getMemberId() &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['completedExercises', 'startTime', 'completedAt', 'memberMemo', 'updatedAt']))
+      );
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      );
+    }
+
+    // Phase 8A: Leads (신규문의 및 OT 관리)
+    match /leads/{leadId} {
+      allow read: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.assignedTrainerId == getTrainerId())
+      );
+      allow create: if isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId)
+      );
+      allow update: if stableOwnership() && isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && 
+         resource.data.assignedTrainerId == getTrainerId() && 
+         request.resource.data.centerId == resource.data.centerId &&
+         request.resource.data.assignedTrainerId == resource.data.assignedTrainerId)
+      );
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId)
+      );
+    }
+
+    // Phase 9A: PT Renewals (재등록 관리)
+    match /renewals/{renewalId} {
+      allow read: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && resource.data.trainerId == getTrainerId())
+      );
+      allow create: if validMemberRelation() && isAuthenticated() && (
+        isCenterAdmin(request.resource.data.centerId) ||
+        (isTrainer(request.resource.data.centerId) && request.resource.data.trainerId == getTrainerId())
+      );
+      allow update: if validMemberRelation() && stableOwnership() && isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId) ||
+        (isTrainer(resource.data.centerId) && 
+         resource.data.trainerId == getTrainerId() && 
+         request.resource.data.centerId == resource.data.centerId &&
+         request.resource.data.trainerId == resource.data.trainerId &&
+         request.resource.data.memberId == resource.data.memberId &&
+         request.resource.data.contractId == resource.data.contractId)
+      );
+      allow delete: if isAuthenticated() && (
+        isCenterAdmin(resource.data.centerId)
+      );
+    }
+  }
+}
