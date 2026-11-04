@@ -34,7 +34,7 @@ gcloud iam service-accounts describe "$DEPLOY_SA" >/dev/null 2>&1 || \
 retry() { for i in 1 2 3 4 5 6; do "$@" && return 0; echo "IAM 반영 대기 중... ($i/6)"; sleep 10; done; return 1; }
 retry gcloud run services add-iam-policy-binding "$SERVICE" --region "$REGION" \
   --member="serviceAccount:$DEPLOY_SA" --role=roles/run.developer --quiet >/dev/null
-for ROLE in roles/run.viewer roles/firebasehosting.admin roles/serviceusage.serviceUsageConsumer; do
+for ROLE in roles/run.viewer roles/firebasehosting.admin roles/serviceusage.serviceUsageConsumer roles/logging.viewer; do
   retry gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:$DEPLOY_SA" --role="$ROLE" --condition=None --quiet >/dev/null
 done

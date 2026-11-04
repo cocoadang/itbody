@@ -143,6 +143,13 @@ jobs:
           PY
           gcloud run services replace /tmp/service.yaml --region "$GCP_REGION" --project "$GCP_PROJECT_ID" --quiet > /dev/null
           rm -f /tmp/service.yaml /tmp/service.json
+      - name: Show candidate startup logs (on failure)
+        if: failure()
+        run: |
+          REV="${CLOUD_RUN_SERVICE}-${GITHUB_SHA::7}-${GITHUB_RUN_ATTEMPT}"
+          gcloud logging read "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"${CLOUD_RUN_SERVICE}\" AND resource.labels.revision_name=\"${REV}\"" \
+            --project "$GCP_PROJECT_ID" --limit 40 --freshness=1h --order=asc \
+            --format='value(timestamp,severity,textPayload,jsonPayload.message)' || true
       - name: Verify candidate (read-only)
         run: |
           URL="$(gcloud run services describe "$CLOUD_RUN_SERVICE" --region "$GCP_REGION" --project "$GCP_PROJECT_ID" \
