@@ -1,0 +1,6 @@
+{
+  "name": "ITBODY",
+  "description": "PT 회원 관리 및 트레이닝 여정 관리 플랫폼",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
