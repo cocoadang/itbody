@@ -148,12 +148,12 @@ export const CommentThread: React.FC<{
       {onSubmit && !disabledReason && (
         <form onSubmit={submit} className="flex items-end gap-2">
           <textarea
-            rows={1}
+            rows={2}
             value={text}
             maxLength={1000}
             onChange={(e) => setText(e.target.value)}
-            placeholder={viewer === 'MEMBER' ? '수업 소감이나 운동 후 불편했던 점을 남겨주세요' : '회원에게 답글 남기기'}
-            className="flex-1 min-h-[40px] max-h-32 px-3 py-2 text-sm border border-stone-300 rounded-xl focus:outline-none focus:ring-1 focus:ring-stone-800 resize-y"
+            placeholder={viewer === 'MEMBER' ? '소감이나 불편했던 점을 남겨주세요' : '회원에게 답글 남기기'}
+            className="flex-1 min-w-0 px-3 py-2 text-sm leading-5 border border-stone-300 rounded-xl focus:outline-none focus:ring-1 focus:ring-stone-800 resize-none"
           />
           <button
             type="submit"

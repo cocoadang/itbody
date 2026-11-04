@@ -54,23 +54,6 @@ export const MemberSimpleHome: React.FC<Props> = ({ member, contracts, sessions,
         )}
       </button>
 
-      <button type="button" onClick={onOpenBody} className="w-full text-left bg-white rounded-2xl border border-stone-200 p-4">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-stone-900">몸 변화</span>
-          <ChevronRight className="w-4 h-4 text-stone-400" />
-        </div>
-        {lastBody ? (
-          <p className="text-sm text-stone-700 mt-1.5">
-            {lastBody.measuredAt} 측정 · {[
-              lastBody.weightKg !== undefined && `체중 ${lastBody.weightKg}kg`,
-              lastBody.skeletalMuscleMassKg !== undefined && `골격근 ${lastBody.skeletalMuscleMassKg}kg`,
-              lastBody.bodyFatPercentage !== undefined && `체지방 ${lastBody.bodyFatPercentage}%`
-            ].filter(Boolean).join(' · ')}
-          </p>
-        ) : (
-          <p className="text-sm text-stone-500 mt-1">아직 측정 기록이 없습니다.</p>
-        )}
-      </button>
     </div>
   );
 };
