@@ -25,6 +25,7 @@ const result = await build({ entryPoints: ['src/server/kakaoAuth.ts'], bundle: t
       export const consumeLimit = async () => true;
       export const ensureKakaoAccount = async id => 'mock-' + id;
       export const memberToken = async uid => 'mock-token-' + uid;
+      export const memberSession = async () => ({ memberships: [], requests: [] });
       export const bindMember = () => { throw Error('Unexpected bind'); };
     `, loader: 'js' }));
   }}] });

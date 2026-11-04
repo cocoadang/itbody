@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { memberApi, captureInvite, readInvite, clearInvite, type CenterMembership, type MemberJoinRequest } from '../services/memberAccessService';
+import { memberApi, takePrefetchedSession, captureInvite, readInvite, clearInvite, type CenterMembership, type MemberJoinRequest } from '../services/memberAccessService';
 import type { UserProfile, UserRole } from '../types';
 import { auth, db, isFirestoreAvailable, isDevSandbox } from '../firebase/config';
 import {
@@ -93,7 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               await signInWithCustomToken(auth, linked.customToken);
               return;
             }
-            const session = await memberApi('/api/member/session');
+            const session = takePrefetchedSession(user.uid) || await memberApi('/api/member/session');
             if (version !== revision) return;
             setMemberships(session.memberships); setMemberRequests(session.requests);
             const active = session.memberships.find((m: CenterMembership) => m.centerId === token.claims.portalCenterId && m.memberId === token.claims.portalMemberId);

@@ -4,7 +4,7 @@ import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { getFirebaseAdmin, requireCenterAdmin } from './adminAccountEndpoints';
 import { consumeLimit } from './securityRateLimit';
 export { consumeLimit } from './securityRateLimit';
-import { ensureKakaoAccount, memberToken, bindMember, requireMemberAccount } from './memberAccess';
+import { ensureKakaoAccount, memberToken, memberSession, bindMember, requireMemberAccount } from './memberAccess';
 
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 const random = () => randomBytes(24).toString('base64url');
@@ -82,11 +82,15 @@ export function registerKakaoAuth(app: Express) {
     try {
       const config = settings();
       if (!config) return res.status(503).send('카카오 로그인을 준비 중입니다. 이메일 로그인을 이용해주세요.');
-      if (!await consumeLimit('oauth:' + req.ip, 30)) return res.status(429).send('잠시 후 다시 시도해주세요.');
       const redirectUri = req.query.origin === undefined ? config.uri : redirectForOrigin(req.query.origin);
       if (!redirectUri) return res.status(403).send('Origin not allowed');
       const state = random();
-      await getFirebaseAdmin()!.db.doc(`kakaoOAuthStates/${hash(state)}`).set({ expiresAt: Date.now() + 10 * 60_000, used: false, redirectUri });
+      // Rate limit and state write are independent: run them together (one round trip instead of two).
+      const [allowed] = await Promise.all([
+        consumeLimit('oauth:' + req.ip, 30),
+        getFirebaseAdmin()!.db.doc(`kakaoOAuthStates/${hash(state)}`).set({ expiresAt: Date.now() + 10 * 60_000, used: false, redirectUri })
+      ]);
+      if (!allowed) return res.status(429).send('잠시 후 다시 시도해주세요.');
       setCookie(res, '__session', 'kakao1.' + state, 10 * 60_000);
       const params = new URLSearchParams({ client_id: config.key, redirect_uri: redirectUri, response_type: 'code', state });
       return res.redirect('https://kauth.kakao.com/oauth/authorize?' + params);
@@ -95,6 +99,11 @@ export function registerKakaoAuth(app: Express) {
   app.post('/api/auth/kakao/exchange', async (req, res) => {
     res.set('Cache-Control', 'no-store');
     let stage = 'CONFIGURATION';
+    // Server-Timing exposes per-step durations (no data) so slow logins can be diagnosed from the browser.
+    const timings: string[] = [];
+    let mark = Date.now();
+    const lap = (name: string) => { const t = Date.now(); timings.push(`${name};dur=${t - mark}`); mark = t; };
+    const flush = () => { if (timings.length) res.set('Server-Timing', timings.join(', ')); };
     try {
       const config = settings();
       const admin = getFirebaseAdmin();
@@ -113,21 +122,32 @@ export function registerKakaoAuth(app: Express) {
       });
       setCookie(res, '__session', '', 0);
       setCookie(res, 'pt_kakao_state', '', 0);
+      lap('state');
       stage = 'KAKAO_TOKEN';
       const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', client_id: config.key, client_secret: config.secret, redirect_uri: redirectUri, code }), signal: AbortSignal.timeout(10_000) });
       const tokenData = await tokenResponse.json();
       if (!tokenResponse.ok || !tokenData.access_token) return kakaoFailure(res, stage);
+      lap('kakao_token');
       stage = 'KAKAO_PROFILE';
       const userResponse = await fetch('https://kapi.kakao.com/v2/user/me', { headers: { Authorization: `Bearer ${tokenData.access_token}` }, signal: AbortSignal.timeout(10_000) });
       const userData = await userResponse.json();
       if (!userResponse.ok || !Number.isSafeInteger(userData.id) || userData.id <= 0) return kakaoFailure(res, stage);
       const kakaoId = String(userData.id);
+      lap('kakao_profile');
       stage = 'FIREBASE_ACCOUNT';
       const uid = await ensureKakaoAccount(kakaoId);
       setCookie(res, 'pt_kakao_pending', '', 0);
+      lap('account');
+      stage = 'MEMBERSHIPS';
+      // Returned with the token so the browser can skip a separate /api/member/session call.
+      const session = await memberSession(uid);
+      lap('memberships');
       stage = 'FIREBASE_LOGIN';
-      return res.json({ customToken: await memberToken(uid), memberAccount: true });
-    } catch (err) { return kakaoFailure(res, stage, err); }
+      const customToken = await memberToken(uid, undefined, session.memberships);
+      lap('token');
+      flush();
+      return res.json({ customToken, memberAccount: true, uid, session });
+    } catch (err) { flush(); return kakaoFailure(res, stage, err); }
   });
   app.post('/api/auth/kakao/link', requireMemberAccount, async (req, res) => {
     res.set('Cache-Control', 'no-store');

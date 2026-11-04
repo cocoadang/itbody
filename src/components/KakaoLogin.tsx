@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { signInWithCustomToken } from 'firebase/auth';
 import { auth } from '../firebase/config';
-import { captureInvite, readInvite } from '../services/memberAccessService';
+import { captureInvite, readInvite, setPrefetchedSession } from '../services/memberAccessService';
 
 export const KakaoLogin: React.FC = () => {
   const [enabled, setEnabled] = useState(false);
@@ -12,6 +12,7 @@ export const KakaoLogin: React.FC = () => {
   const started = useRef(false);
   const complete = async (data: any) => {
     if (!data.customToken || !auth) throw new Error(data.error || '카카오 로그인에 실패했습니다.');
+    setPrefetchedSession(data.uid, data.session);
     await signInWithCustomToken(auth, data.customToken);
   };
   useEffect(() => {
@@ -25,6 +26,8 @@ export const KakaoLogin: React.FC = () => {
     const state = params.get('state');
     if (callback) {
       window.history.replaceState({}, '', window.location.pathname);
+      // Fetch the member screen code while the login is being verified.
+      import('./member/MemberPortal').catch(() => undefined);
       setBusy(true);
       if (!authCode || !state) { setError('카카오 로그인이 취소되었거나 실패했습니다.'); setBusy(false); }
       else fetch('/api/auth/kakao/exchange', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: authCode, state }) })

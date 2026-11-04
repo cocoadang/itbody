@@ -2,7 +2,6 @@ import { generateWithModelFallback, AiGenerationTimeout } from './src/server/aiG
 import express from 'express';
 import path from 'path';
 import compression from 'compression';
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
 import { registerMemberAccess } from './src/server/memberAccess';
@@ -263,6 +262,7 @@ ${trainerNotes ? `[트레이너 사전 메모]: ${trainerNotes}` : ''}
 // Setup Vite middleware or static serving
 async function setupServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa'

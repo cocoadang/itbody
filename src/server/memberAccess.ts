@@ -70,9 +70,19 @@ export async function listMemberships(uid: string) {
   }));
   return results.filter((v): v is NonNullable<typeof v> => v !== null);
 }
-export async function memberToken(uid: string, centerId?: string) {
+export async function memberSession(uid: string) {
+  const db = getFirebaseAdmin()!.db;
+  const [requests, memberships] = await Promise.all([
+    db.collection('memberJoinRequests').where('uid', '==', uid).limit(50).get(),
+    listMemberships(uid)
+  ]);
+  const safeRequests = await Promise.all(requests.docs.map(async d => { const r = d.data(); return { id: d.id, centerId: r.centerId, centerName: (await db.doc(`centers/${r.centerId}`).get()).data()?.name || r.centerId, status: r.status }; }));
+  return { memberships, requests: safeRequests };
+}
+
+export async function memberToken(uid: string, centerId?: string, known?: Awaited<ReturnType<typeof listMemberships>>) {
   let memberships: Awaited<ReturnType<typeof listMemberships>>;
-  try { memberships = await listMemberships(uid); }
+  try { memberships = known || await listMemberships(uid); }
   catch (cause) { throw Object.assign(new Error('Membership lookup failed'), { loginStage: 'MEMBERSHIPS', cause }); }
   const chosen = centerId ? memberships.find(m => m.centerId === centerId) : memberships.length === 1 ? memberships[0] : undefined;
   if (centerId && !chosen) throw new Error('Denied');
@@ -121,10 +131,7 @@ export function registerMemberAccess(app: Express) {
   }, requireMemberAccount);
   app.get('/api/member/session', async (req, res) => {
     try {
-      const uid = (req as any).memberUid;
-      const requests = await getFirebaseAdmin()!.db.collection('memberJoinRequests').where('uid', '==', uid).limit(50).get();
-      const safeRequests = await Promise.all(requests.docs.map(async d => { const r = d.data(); return { id: d.id, centerId: r.centerId, centerName: (await getFirebaseAdmin()!.db.doc(`centers/${r.centerId}`).get()).data()?.name || r.centerId, status: r.status }; }));
-      return res.json({ memberships: await listMemberships(uid), requests: safeRequests });
+      return res.json(await memberSession((req as any).memberUid));
     } catch { return fail(res, 503); }
   });
   app.get('/api/member/centers', async (req, res) => {

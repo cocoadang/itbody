@@ -1,20 +1,26 @@
 import { MemberAccessPanel } from './components/MemberAccessPanel';
-import React, { useState } from 'react';
+import React, { Suspense, lazy, useState } from 'react';
 import { isDevSandbox } from './firebase/config';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar, type NavTab } from './components/Navbar';
 import { TenantVerificationBar } from './components/TenantVerificationBar';
-import { DashboardView } from './components/DashboardView';
-import { MemberList } from './components/MemberList';
-import { MemberDetailView } from './components/MemberDetailView';
-import { TrainerList } from './components/TrainerList';
-import { NewMemberModal } from './components/NewMemberModal';
+const DashboardView = lazy(() => import('./components/DashboardView').then((m) => ({ default: m.DashboardView })));
+const MemberList = lazy(() => import('./components/MemberList').then((m) => ({ default: m.MemberList })));
+const MemberDetailView = lazy(() => import('./components/MemberDetailView').then((m) => ({ default: m.MemberDetailView })));
+const TrainerList = lazy(() => import('./components/TrainerList').then((m) => ({ default: m.TrainerList })));
+const NewMemberModal = lazy(() => import('./components/NewMemberModal').then((m) => ({ default: m.NewMemberModal })));
 import { LoginModal } from './components/LoginModal';
 import { LoginView } from './components/LoginView';
-import { MemberPortal } from './components/member/MemberPortal';
-import { LeadList } from './components/LeadList';
-import { RenewalManagementView } from './components/RenewalManagementView';
+const MemberPortal = lazy(() => import('./components/member/MemberPortal').then((m) => ({ default: m.MemberPortal })));
+const LeadList = lazy(() => import('./components/LeadList').then((m) => ({ default: m.LeadList })));
+const RenewalManagementView = lazy(() => import('./components/RenewalManagementView').then((m) => ({ default: m.RenewalManagementView })));
 import { LayoutDashboard, Users, Dumbbell, ClipboardList, RotateCcw } from 'lucide-react';
+
+const ScreenLoading = () => (
+  <div className="py-16 flex justify-center">
+    <div className="w-7 h-7 rounded-full border-2 border-stone-300 border-t-stone-900 animate-spin" />
+  </div>
+);
 
 function MainApp() {
   const { currentUser, isLoading, memberAccount, firebaseAuthUser } = useAuth();
@@ -91,7 +97,9 @@ function MainApp() {
 
         {memberAccount && <div className="max-w-md w-full mx-auto px-4 pt-3"><button type="button" onClick={() => setShowMemberAccess(true)} className="text-sm underline">센터 선택 · 다른 센터 연결</button></div>}
         {/* Dedicated Member Mobile Portal */}
-        <MemberPortal key={`member-portal-${currentUser.memberId}-${currentUser.centerId}-${refreshKey}`} />
+        <Suspense fallback={<ScreenLoading />}>
+          <MemberPortal key={`member-portal-${currentUser.memberId}-${currentUser.centerId}-${refreshKey}`} />
+        </Suspense>
 
         <LoginModal
           isOpen={isLoginModalOpen}
@@ -116,6 +124,7 @@ function MainApp() {
 
       {/* 3. Main Content Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-6">
+        <Suspense fallback={<ScreenLoading />}>
         {selectedMemberId ? (
           /* Member Detail View */
           <MemberDetailView
@@ -152,6 +161,7 @@ function MainApp() {
             {currentTab === 'trainers' && <TrainerList />}
           </div>
         )}
+        </Suspense>
       </main>
 
       {/* 4. Footer with phase info */}
@@ -277,11 +287,15 @@ function MainApp() {
       </nav>
 
       {/* 5. Modals */}
-      <NewMemberModal
-        isOpen={isNewMemberModalOpen}
-        onClose={() => setIsNewMemberModalOpen(false)}
-        onSuccess={handleMemberCreated}
-      />
+      {isNewMemberModalOpen && (
+        <Suspense fallback={null}>
+          <NewMemberModal
+            isOpen={isNewMemberModalOpen}
+            onClose={() => setIsNewMemberModalOpen(false)}
+            onSuccess={handleMemberCreated}
+          />
+        </Suspense>
+      )}
 
       <LoginModal
         isOpen={isLoginModalOpen}

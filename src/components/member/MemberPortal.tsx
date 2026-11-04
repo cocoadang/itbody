@@ -99,37 +99,18 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ memberIdOverride, on
       const role = currentUser.role || 'MEMBER';
       const trainerId = currentUser.trainerId || null;
 
-      const [
-        memberRes,
-        consultRes,
-        contractsRes,
-        sessionsRes,
-        goalsRes,
-        measurementsRes,
-        photosRes,
-        reviewsRes,
-        weeklyRes
-      ] = await Promise.all([
+      // Only what the simplified member screens show: profile, PT passes, journal, body records.
+      const [memberRes, contractsRes, sessionsRes, measurementsRes] = await Promise.all([
         getMemberById(currentUser.centerId, effectiveMemberId, role, trainerId, effectiveMemberId),
-        getConsultationByMemberId(currentUser.centerId, effectiveMemberId, role, trainerId, effectiveMemberId),
         getContractsByMember(currentUser.centerId, effectiveMemberId, role, trainerId, effectiveMemberId),
         getPtSessionsByMember(currentUser.centerId, effectiveMemberId, role, trainerId, effectiveMemberId),
-        getGoalsByMember(currentUser.centerId, effectiveMemberId, role, trainerId, effectiveMemberId),
-        getBodyMeasurementsByMember(currentUser.centerId, effectiveMemberId, role, trainerId, effectiveMemberId),
-        getProgressPhotos(currentUser.centerId, effectiveMemberId, role, trainerId, effectiveMemberId),
-        getProgressReviews(currentUser.centerId, effectiveMemberId, role, trainerId, effectiveMemberId),
-        getWeeklyActivitySummary(currentUser.centerId, effectiveMemberId)
+        getBodyMeasurementsByMember(currentUser.centerId, effectiveMemberId, role, trainerId, effectiveMemberId)
       ]);
 
       setMember(memberRes);
-      setConsultation(consultRes);
       setContracts(contractsRes);
       setSessions(sessionsRes);
-      setGoals(goalsRes);
       setMeasurements(measurementsRes);
-      setPhotos(photosRes);
-      setReviews(reviewsRes);
-      setWeeklySummary(weeklyRes);
     } catch (err) {
       console.error('Failed to load member portal data:', err);
     } finally {
