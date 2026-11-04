@@ -1,0 +1,16 @@
+{
+  "hosting": {
+    "site": "itbody-cocoadang",
+    "public": "hosting-public",
+    "ignore": ["**/.*"],
+    "rewrites": [
+      {
+        "source": "**",
+        "run": { "serviceId": "pt-journey", "region": "asia-south1" }
+      }
+    ],
+    "headers": [
+      { "source": "/api/**", "headers": [{ "key": "Cache-Control", "value": "private, no-store" }] }
+    ]
+  }
+}

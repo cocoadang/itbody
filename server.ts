@@ -1,3 +1,4 @@
+import { generateWithModelFallback, AiGenerationTimeout } from './src/server/aiGeneration';
 import express from 'express';
 import path from 'path';
 import compression from 'compression';
@@ -44,30 +45,6 @@ function getGeminiClient(): GoogleGenAI | null {
       }
     }
   });
-}
-
-// Helper to call Gemini with model fallback if upstream experiences high demand (503/429)
-async function generateWithModelFallback(ai: GoogleGenAI, options: Parameters<typeof ai.models.generateContent>[0]) {
-  const modelsToTry = [options.model || 'gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'];
-  let lastError: unknown = null;
-
-  for (const model of modelsToTry) {
-    try {
-      return await ai.models.generateContent({
-        ...options,
-        model
-      });
-    } catch (err: any) {
-      lastError = err;
-      const statusCode = err?.status || err?.statusCode || (typeof err?.message === 'string' && err.message.includes('503') ? 503 : null);
-      if (statusCode === 503 || statusCode === 429) {
-        console.warn(`[Gemini API] Model ${model} unavailable (${statusCode}). Trying fallback model...`);
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw lastError;
 }
 
 // Health check endpoint
@@ -186,6 +163,9 @@ ${rawMemo}
       draft: parsedJson
     });
   } catch (err: unknown) {
+    if (err instanceof AiGenerationTimeout) {
+      return res.status(504).json({ success: false, error: 'AI 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.' });
+    }
     console.error('Error in /api/ai/session-draft:', err);
     return res.status(500).json({
       success: false,
@@ -267,6 +247,9 @@ ${trainerNotes ? `[트레이너 사전 메모]: ${trainerNotes}` : ''}
       draft: parsedJson
     });
   } catch (err: unknown) {
+    if (err instanceof AiGenerationTimeout) {
+      return res.status(504).json({ success: false, error: 'AI 응답 시간이 초과되었습니다. 잠시 후 다시 시도해주세요.' });
+    }
     console.error('Error in /api/ai/review-draft:', err);
     return res.status(500).json({
       success: false,
