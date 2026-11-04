@@ -53,7 +53,7 @@ export const MediaGrid: React.FC<{
   if (!media || media.length === 0) return null;
   return (
     <>
-      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+      <div className="grid gap-2 grid-cols-3 sm:grid-cols-[repeat(auto-fill,minmax(120px,160px))]">
         {media.map((m) => (
           <div key={m.mediaId} className="relative aspect-square rounded-lg overflow-hidden bg-stone-100 border border-stone-200">
             <button type="button" onClick={() => setOpen(m)} className="w-full h-full" aria-label={m.kind === 'video' ? '영상 보기' : '사진 보기'}>

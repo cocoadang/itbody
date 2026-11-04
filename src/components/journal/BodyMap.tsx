@@ -91,7 +91,7 @@ const Figure: React.FC<{ shapes: Shape[]; selected: Set<MuscleGroup>; onToggle?:
         </path>
       );
     })}
-    <text x="50" y="196" textAnchor="middle" fontSize="9" fill="#78716c">{label}</text>
+    <text x="50" y="197" textAnchor="middle" fontSize="11" fill="#78716c">{label}</text>
   </g>
 );
 

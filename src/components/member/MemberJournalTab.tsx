@@ -77,7 +77,7 @@ export const MemberJournalTab: React.FC<MemberJournalTabProps> = ({ memberId, se
               </p>
             )}
             <ExerciseList exercises={s.exercises} />
-            {s.muscles && s.muscles.length > 0 && <BodyMap selected={s.muscles} className="w-48" />}
+            {s.muscles && s.muscles.length > 0 && <BodyMap selected={s.muscles} className="w-60 sm:w-72" />}
             <MediaGrid media={s.media} />
             <div className="border-t border-stone-100 pt-3">
               <CommentThread

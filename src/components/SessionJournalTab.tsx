@@ -467,9 +467,9 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
                 )}
                 {note && <p className="text-sm text-stone-900 whitespace-pre-wrap">{note}</p>}
                 {s.body && (s.body.weightKg || s.body.skeletalMuscleMassKg || s.body.bodyFatPercentage) && <BodyLine body={s.body} />}
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="flex-1"><ExerciseList exercises={s.exercises} /></div>
-                  {s.muscles && s.muscles.length > 0 && <BodyMap selected={s.muscles} className="w-40 shrink-0" />}
+                <div className="flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-10">
+                  <div className="sm:min-w-[260px]"><ExerciseList exercises={s.exercises} /></div>
+                  {s.muscles && s.muscles.length > 0 && <BodyMap selected={s.muscles} className="w-56 sm:w-72 shrink-0" />}
                 </div>
                 <MediaGrid media={s.media} />
                 {(s.internalNote || s.sessionNotes) && (
