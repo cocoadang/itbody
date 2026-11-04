@@ -119,6 +119,9 @@ jobs:
           containers = tmpl['spec']['containers']
           assert len(containers) == 1, 'expected a single container'
           containers[0]['image'] = os.environ['IMAGE']
+          # AI Studio's source deploy pinned its own entrypoint (/app/server.cjs); this image
+          # has its own CMD, so drop the inherited command/args.
+          print('dropped entrypoint override:', {k: containers[0].pop(k) for k in ('command', 'args') if k in containers[0]})
           # Keep the live traffic split exactly; drop old candidate tags.
           traffic = []
           for t in live['status'].get('traffic', []):
