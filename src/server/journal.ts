@@ -114,22 +114,20 @@ const sessionRef = (id: string) => getFirebaseAdmin()!.db.doc(`ptSessions/${id}`
 
 export const PLAN_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 
-/** Validates a management plan from the trainer; returns null when anything is out of bounds. */
+/** Normalises a management plan from the trainer. Generous limits; nothing reasonable is rejected. */
 export function cleanPlan(input: any) {
   if (!input || typeof input !== 'object') return null;
-  const text = (v: unknown, max: number) => (v === undefined || v === null || v === '' ? '' : typeof v === 'string' && v.length <= max ? v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim() : null);
-  const goals = text(input.goals, 1000), cardio = text(input.cardio, 500), notes = text(input.notes, 2000);
-  if (goals === null || cardio === null || notes === null) return null;
+  const text = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim().slice(0, max) : '');
   const weekly: Record<string, string> = {};
-  for (const d of PLAN_DAYS) {
-    const v = text(input.weekly?.[d], 20);
-    if (v === null) return null;
-    weekly[d] = v;
-  }
-  const p = input.proteinPerKg;
-  const proteinPerKg = p === null || p === undefined || p === '' ? null : typeof p === 'number' && p >= 0.5 && p <= 3 ? Math.round(p * 10) / 10 : undefined;
-  if (proteinPerKg === undefined) return null;
-  return { goals, weekly, proteinPerKg, cardio, notes };
+  for (const d of PLAN_DAYS) weekly[d] = text(input.weekly?.[d], 40);
+  const p = typeof input.proteinPerKg === 'number' ? input.proteinPerKg : NaN;
+  return {
+    goals: text(input.goals, 5000),
+    weekly,
+    proteinPerKg: p >= 0.5 && p <= 3 ? Math.round(p * 10) / 10 : null, // optional legacy field
+    cardio: text(input.cardio, 5000),
+    notes: text(input.notes, 10000)
+  };
 }
 
 function commentView(id: string, c: any) {
@@ -213,7 +211,7 @@ export function registerJournal(app: Express) {
     const { memberId } = req.body || {};
     if (caller.role === 'MEMBER' || !safeId(memberId)) return deny(res);
     const clean = cleanPlan(req.body?.plan);
-    if (!clean) return deny(res, 400, '입력 내용을 확인해주세요. (목표 1000자, 메모 2000자, 단백질 0.5~3g 이내)');
+    if (!clean) return deny(res, 400, '입력 내용을 확인해주세요.');
     const db = getFirebaseAdmin()!.db;
     const member = (await db.doc(`members/${memberId}`).get()).data();
     if (!canAccessMember(caller, member, memberId)) return deny(res);

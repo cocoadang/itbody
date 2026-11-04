@@ -56,7 +56,7 @@ const PlanView: React.FC<{ plan: Draft; weightKg?: number }> = ({ plan, weightKg
       )}
       {plan.notes && (
         <div>
-          <p className="text-xs font-semibold text-stone-500 mb-0.5">바디 컨설팅 메모</p>
+          <p className="text-xs font-semibold text-stone-500 mb-0.5">바디 컨설팅</p>
           <p className="whitespace-pre-wrap">{plan.notes}</p>
         </div>
       )}
@@ -126,7 +126,7 @@ export const MemberPlanEditor: React.FC<{ memberId: string; canEdit: boolean; we
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-bold text-stone-900">관리 계획</h3>
-            <p className="text-xs text-stone-500">목표 · 주간 계획 · 영양 · 유산소 — 회원 홈에 보입니다{plan?.updatedAt ? ` · ${plan.updatedAt.slice(0, 10)} ${plan.updatedByName || ''} 수정` : ''}</p>
+            <p className="text-xs text-stone-500">목표 · 주간 계획 · 바디 컨설팅 — 회원 홈에 보입니다{plan?.updatedAt ? ` · ${plan.updatedAt.slice(0, 10)} ${plan.updatedByName || ''} 수정` : ''}</p>
           </div>
           {canEdit && (
             <button type="button" onClick={startEdit} className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-white bg-stone-900 rounded-xl">
@@ -153,10 +153,10 @@ export const MemberPlanEditor: React.FC<{ memberId: string; canEdit: boolean; we
       {error && <p className="text-sm text-rose-600">{error}</p>}
       <label className="block text-sm font-semibold text-stone-900">
         목표
-        <textarea rows={3} value={draft.goals} maxLength={1000} onChange={(e) => setDraft({ ...draft, goals: e.target.value })} placeholder="예: 근력운동 주 3회 이상, 수면 7시간 이상, 클린식 하루 2~3끼" className={field} />
+        <textarea rows={3} value={draft.goals} onChange={(e) => setDraft({ ...draft, goals: e.target.value })} placeholder="예: 근력운동 주 3회 이상, 수면 7시간 이상" className={field} />
       </label>
       <div>
-        <p className="text-sm font-semibold text-stone-900 mb-1">주간 운동 계획</p>
+        <p className="text-sm font-semibold text-stone-900 mb-1">주간 운동 계획 <span className="text-xs font-normal text-stone-500">선택</span></p>
         <div className="grid grid-cols-7 gap-1">
           {DAYS.map(([d, label]) => (
             <label key={d} className="text-center text-xs text-stone-600">
@@ -169,25 +169,8 @@ export const MemberPlanEditor: React.FC<{ memberId: string; canEdit: boolean; we
         </div>
       </div>
       <label className="block text-sm font-semibold text-stone-900">
-        단백질 (체중 1kg당 g)
-        <div className="flex items-center gap-2 mt-1">
-          <input
-            inputMode="decimal"
-            value={draft.proteinPerKg ?? ''}
-            onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, ''); setDraft({ ...draft, proteinPerKg: v ? Number(v) : null }); }}
-            placeholder="예: 1.5"
-            className="w-24 px-3 py-2 text-sm border border-stone-300 rounded-xl"
-          />
-          <span className="text-xs text-stone-500 font-normal">{proteinLine(weightKg, draft.proteinPerKg) || (weightKg ? `최근 체중 ${weightKg}kg 기준으로 계산됩니다` : '체중을 기록하면 하루 목표량이 계산됩니다')}</span>
-        </div>
-      </label>
-      <label className="block text-sm font-semibold text-stone-900">
-        유산소
-        <textarea rows={2} value={draft.cardio} maxLength={500} onChange={(e) => setDraft({ ...draft, cardio: e.target.value })} placeholder="예: 웨이트 후 런닝머신 속도 4~5, 경사 6~16, 25~40분 (점진적으로 늘림)" className={field} />
-      </label>
-      <label className="block text-sm font-semibold text-stone-900">
-        바디 컨설팅 메모
-        <textarea rows={4} value={draft.notes} maxLength={2000} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder="분할 방법, 주의할 점 등 자유롭게" className={field} />
+        바디 컨설팅 <span className="text-xs font-normal text-stone-500">영양·유산소·주의할 점 등 자유롭게</span>
+        <textarea rows={5} value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} placeholder={'예: 단백질 하루 57g 이상 (체중 × 1g)\n웨이트 후 런닝머신 속도 4~5, 25~40분'} className={field} />
       </label>
       <div className="flex justify-end gap-2">
         <button type="button" onClick={() => setEditing(false)} className="px-4 py-2.5 text-sm border border-stone-300 rounded-xl">취소</button>

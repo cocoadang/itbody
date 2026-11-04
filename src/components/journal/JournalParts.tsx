@@ -112,7 +112,10 @@ export const CommentThread: React.FC<{
     const el = boxRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    // scrollHeight excludes the border; without it the box is 2px short and shows scroll arrows.
+    const full = el.scrollHeight + el.offsetHeight - el.clientHeight;
+    el.style.height = `${Math.min(full, 120)}px`;
+    el.style.overflowY = full > 120 ? 'auto' : 'hidden';
   }, [text]);
 
   const submit = async (e: React.FormEvent) => {
@@ -162,7 +165,7 @@ export const CommentThread: React.FC<{
             maxLength={1000}
             onChange={(e) => setText(e.target.value)}
             placeholder={viewer === 'MEMBER' ? '소감이나 불편했던 점을 남겨주세요' : '회원에게 답글 남기기'}
-            className="flex-1 min-w-0 px-3 py-2 text-sm leading-5 border border-stone-300 rounded-xl focus:outline-none focus:ring-1 focus:ring-stone-800 resize-none overflow-y-auto"
+            className="flex-1 min-w-0 px-3 py-2 text-sm leading-5 border border-stone-300 rounded-xl focus:outline-none focus:ring-1 focus:ring-stone-800 resize-none overflow-hidden"
           />
           <button
             type="submit"

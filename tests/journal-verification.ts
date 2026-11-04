@@ -69,9 +69,9 @@ assert.equal(plan?.goals, '근력운동 주 3회');
 assert.equal(plan?.weekly.mon, '밀기');
 assert.equal(plan?.weekly.tue, '');
 assert.equal(plan?.proteinPerKg, 1.3);
-assert.equal(cleanPlan({ goals: 'x'.repeat(1001) }), null);
-assert.equal(cleanPlan({ proteinPerKg: 9 }), null);
-assert.equal(cleanPlan({ weekly: { mon: 'x'.repeat(21) } }), null);
+assert.equal(cleanPlan({ goals: 'x'.repeat(6000) })?.goals.length, 5000, 'long text is trimmed, not rejected');
+assert.equal(cleanPlan({ proteinPerKg: 15 })?.proteinPerKg, null, 'odd numbers are ignored, not rejected');
+assert.equal(cleanPlan({ weekly: { mon: 'x'.repeat(50) } })?.weekly.mon.length, 40);
 assert.equal(cleanPlan(null), null);
 assert.equal(cleanPlan({})?.proteinPerKg, null);
 

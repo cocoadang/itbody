@@ -120,6 +120,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
   const [bodyWeight, setBodyWeight] = useState('');
   const [bodyMuscle, setBodyMuscle] = useState('');
   const [bodyFat, setBodyFat] = useState('');
+  const [showBody, setShowBody] = useState(false);
   const [muscleOverride, setMuscleOverride] = useState<Partial<Record<MuscleGroup, boolean>>>({});
   const [query, setQuery] = useState('');
 
@@ -212,7 +213,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
     setMemo('');
     setExercises([]);
     setMuscleOverride({});
-    setBodyWeight(''); setBodyMuscle(''); setBodyFat('');
+    setBodyWeight(''); setBodyMuscle(''); setBodyFat(''); setShowBody(false);
     setFiles([]);
     setExistingMedia([]);
     setRemovedMedia([]);
@@ -236,6 +237,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
     setBodyWeight(s.body?.weightKg?.toString() || '');
     setBodyMuscle(s.body?.skeletalMuscleMassKg?.toString() || '');
     setBodyFat(s.body?.bodyFatPercentage?.toString() || '');
+    setShowBody(false);
     setFiles([]);
     setExistingMedia(s.media || []);
     setRemovedMedia([]);
@@ -535,18 +537,23 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
                 </label>
               )}
 
-              <div>
-                <span className="text-sm font-semibold text-stone-900">체성분</span>
-                <span className="text-xs text-stone-500 ml-2">선택 · 입력하면 신체 변화 그래프에도 저장됩니다</span>
-                <div className="grid grid-cols-3 gap-2 mt-1.5">
-                  {([['체중(kg)', bodyWeight, setBodyWeight], ['골격근량(kg)', bodyMuscle, setBodyMuscle], ['체지방률(%)', bodyFat, setBodyFat]] as const).map(([label, value, set]) => (
-                    <label key={label} className="text-[11px] text-stone-500">
-                      {label}
-                      <input inputMode="decimal" value={value} onChange={(e) => set(e.target.value.replace(/[^0-9.]/g, ''))} className="mt-0.5 w-full px-2 py-2 text-sm border border-stone-300 rounded-lg" />
-                    </label>
-                  ))}
+              {/* Body composition is optional: hidden behind a button unless already filled. */}
+              {showBody || bodyWeight || bodyMuscle || bodyFat ? (
+                <div>
+                  <span className="text-sm font-semibold text-stone-900">체성분</span>
+                  <span className="text-xs text-stone-500 ml-2">신체 변화 그래프에도 저장됩니다</span>
+                  <div className="grid grid-cols-3 gap-2 mt-1.5">
+                    {([['체중(kg)', bodyWeight, setBodyWeight], ['골격근량(kg)', bodyMuscle, setBodyMuscle], ['체지방률(%)', bodyFat, setBodyFat]] as const).map(([label, value, set]) => (
+                      <label key={label} className="text-[11px] text-stone-500">
+                        {label}
+                        <input inputMode="decimal" value={value} onChange={(e) => set(e.target.value.replace(/[^0-9.]/g, ''))} className="mt-0.5 w-full px-2 py-2 text-sm border border-stone-300 rounded-lg" />
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <button type="button" onClick={() => setShowBody(true)} className="text-sm text-stone-600 underline">+ 체중·체성분 기록</button>
+              )}
 
               <label className="block">
                 <span className="text-sm font-semibold text-stone-900">수업 메모</span>
