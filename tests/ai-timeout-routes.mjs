@@ -16,6 +16,7 @@ const stubs = {
   './src/server/memberAccess': 'export const registerMemberAccess = () => {};',
   './src/server/kakaoAuth': 'export const registerKakaoAuth = () => {};',
   './src/server/aiSecurity': 'export const requireAiAccess = () => { throw Error("Auth must be isolated"); };',
+  './src/server/journal': 'export const registerJournal = () => {};',
   './src/server/adminAccountEndpoints': 'export const registerAdminAccountEndpoints = () => {};',
   './src/server/aiGeneration': 'export class AiGenerationTimeout extends Error {} export const generateWithModelFallback = async () => { throw new AiGenerationTimeout(); };',
 };
