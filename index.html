@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ITBODY</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="description" content="PT 회원 관리 및 트레이닝 여정 관리 플랫폼" />
+    <meta property="og:title" content="ITBODY" />
+    <meta property="og:description" content="PT 회원 관리 및 트레이닝 여정 관리 플랫폼" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function() {
+        function isSuppressed(val) {
+          if (!val) return false;
+          var s = (typeof val === 'string' ? val : (val.message || '') + ' ' + (val.stack || '')) + '';
+          var low = s.toLowerCase();
+          return (
+            low.indexOf('metamask') !== -1 ||
+            low.indexOf('ethereum') !== -1 ||
+            low.indexOf('solana') !== -1 ||
+            low.indexOf('phantom') !== -1 ||
+            low.indexOf('web3') !== -1 ||
+            low.indexOf('coinbase') !== -1
+          );
+        }
+        window.addEventListener('error', function(e) {
+          if (isSuppressed(e.message) || isSuppressed(e.error)) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            return true;
+          }
+        }, true);
+        window.addEventListener('unhandledrejection', function(e) {
+          if (isSuppressed(e.reason)) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            return true;
+          }
+        }, true);
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
