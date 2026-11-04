@@ -13,7 +13,7 @@ permissions:
 # Filled in from ops/setup-github-deploy.sh output (one-time GCP setup).
 env:
   GCP_PROJECT_ID: gen-lang-client-0064554427
-  GCP_PROJECT_NUMBER: ''
+  GCP_PROJECT_NUMBER: '9298525505'
   GCP_REGION: asia-south1
   CLOUD_RUN_SERVICE: pt-journey
   AR_REPO: itbody-images
