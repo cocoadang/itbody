@@ -36,6 +36,7 @@ jobs:
       # Offline tests only (no network, model or database).
       - run: node --import tsx tests/kakao-hosting-verification.ts
       - run: node --import tsx tests/ai-generation-verification.ts
+      - run: node --import tsx tests/journal-verification.ts
       - run: node tests/kakao-hosting-routes.mjs
       - run: node tests/ai-timeout-routes.mjs
       - run: npm run build

@@ -32,7 +32,7 @@ import type {
 } from '../types';
 import { EmptyState } from './EmptyState';
 import { ConsultationTab } from './ConsultationTab';
-import { PtSessionsTab } from './PtSessionsTab';
+import { SessionJournalTab } from './SessionJournalTab';
 import { BodyChangesTab } from './BodyChangesTab';
 import { PhotosTab } from './PhotosTab';
 import { PerformanceReportTab } from './PerformanceReportTab';
@@ -107,63 +107,14 @@ interface TabDefinition {
   description: string;
 }
 
+// Simplified per the trainer meeting: journal first, body changes kept separate, member info.
+// Consultation, progress photos, solo workouts and reports are hidden (data is kept).
+const SHOW_LEGACY_SECTIONS: boolean = false;
+
 const TABS: TabDefinition[] = [
-  {
-    id: 'overview',
-    label: '개요',
-    icon: Layers,
-    isImplemented: true,
-    phase: 'Phase 1',
-    description: '회원 기본 정보 및 전체 PT 여정 요약'
-  },
-  {
-    id: 'consultation',
-    label: '최초 상담',
-    icon: MessageSquare,
-    isImplemented: true,
-    phase: 'Phase 2',
-    description: '최초 상담 설문, 운동 목적 및 병력/부상 이력 기록'
-  },
-  {
-    id: 'pt-sessions',
-    label: 'PT 수업 일지',
-    icon: Dumbbell,
-    isImplemented: true,
-    phase: 'Phase 2',
-    description: '회차별 수업 일지, 중량 및 반복 횟수 기록, 이전 수업 비교'
-  },
-  {
-    id: 'body-changes',
-    label: '신체변화',
-    icon: Activity,
-    isImplemented: true,
-    phase: 'Phase 3',
-    description: '체중, 체지방률, 근육량, 둘레 측정 트렌드 및 운동 수행능력'
-  },
-  {
-    id: 'photos',
-    label: '사진',
-    icon: Camera,
-    isImplemented: true,
-    phase: 'Phase 4',
-    description: '체형 전/후 사진 비교 및 눈바디 일지 (회원 동의 기반)'
-  },
-  {
-    id: 'solo-workout',
-    label: '개인운동',
-    icon: Flame,
-    isImplemented: true,
-    phase: 'Phase 5',
-    description: '트레이너가 계획한 개인 맞춤 운동 루틴 및 자율운동 수행 체크'
-  },
-  {
-    id: 'performance-report',
-    label: '성과리포트',
-    icon: Award,
-    isImplemented: true,
-    phase: 'Phase 4',
-    description: '처음 목표 대비 신체/운동 변화 종합 리뷰 및 다음 목표 설정'
-  }
+  { id: 'pt-sessions', label: '수업 일지', icon: Dumbbell, isImplemented: true, phase: 'Journal', description: '회차별 메모·운동·사진/영상·회원 댓글' },
+  { id: 'body-changes', label: '신체 변화', icon: Activity, isImplemented: true, phase: 'Body', description: '체중·체성분 변화 그래프' },
+  { id: 'overview', label: '회원 정보', icon: Layers, isImplemented: true, phase: 'Info', description: '회원 기본 정보와 PT 이용권' }
 ];
 
 const GOAL_CATEGORY_MAP: Record<GoalCategory, { label: string; color: string }> = {
@@ -181,7 +132,7 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
   const { currentUser } = useAuth();
   const [member, setMember] = useState<Member | null>(null);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
-  const [activeTab, setActiveTab] = useState<DetailTab>('overview');
+  const [activeTab, setActiveTab] = useState<DetailTab>('pt-sessions');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -1180,6 +1131,8 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
               )}
             </div>
 
+            {/* Goals and activity timeline are hidden in the simplified layout (data kept). */}
+            {SHOW_LEGACY_SECTIONS && (<>
             {/* 1. Member Goals Section (Phase 2 Goal Management) */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
@@ -1362,6 +1315,7 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
               )}
             </div>
 
+            </>)}
             {/* 3. Basic Profile Details & Trainer Notes */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-6 border-t border-stone-200">
               {/* Left: Detailed Info */}
@@ -1468,7 +1422,7 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
 
         {/* TAB 3: PT 수업 일지 (PtSessions - Fully implemented in Phase 2) */}
         {activeTab === 'pt-sessions' && (
-          <PtSessionsTab
+          <SessionJournalTab
             member={member}
             trainerName={assignedTrainer?.name}
             onSessionUpdated={refreshTimelineAndGoals}

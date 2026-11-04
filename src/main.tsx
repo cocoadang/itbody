@@ -43,7 +43,19 @@ if (typeof window !== 'undefined') {
   );
 }
 
-createRoot(document.getElementById('root')!).render(
+// One address for everyone: logins and browser state are per-domain, so the old AI Studio
+// address forwards to itbody.dsoom.com. A Kakao login that already started on the old
+// address finishes there first (its callback is registered for that origin).
+const CANONICAL_ORIGIN = 'https://itbody.dsoom.com';
+const host = typeof window !== 'undefined' ? window.location.hostname : '';
+const shouldMove =
+  (host.endsWith('.ai.studio') || host.endsWith('.run.app')) &&
+  !new URLSearchParams(window.location.search).has('kakao_callback');
+if (shouldMove) {
+  window.location.replace(CANONICAL_ORIGIN + window.location.pathname + window.location.search + window.location.hash);
+}
+
+if (!shouldMove) createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <App />

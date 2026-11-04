@@ -233,8 +233,33 @@ export interface PtSession {
   memberFeedback?: string; // Member-facing feedback
   nextSessionGoal?: string;
   exercises: ExerciseRecord[];
+  media?: SessionMedia[]; // Photos/videos attached by staff via the journal API
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface SessionMedia {
+  mediaId: string;
+  kind: 'image' | 'video';
+  contentType: string;
+  url: string;
+  storagePath: string;
+  name?: string;
+  size?: number;
+  createdAt: string;
+}
+
+export interface SessionComment {
+  commentId: string;
+  sessionId: string;
+  sessionNumber: number;
+  memberId: string;
+  authorRole: 'MEMBER' | 'STAFF';
+  authorName: string;
+  text: string;
+  createdAt: string;
+  readByStaffAt: string | null;
+  memberName?: string;
 }
 
 // ==========================================

@@ -9,6 +9,7 @@ import { registerMemberAccess } from './src/server/memberAccess';
 import { registerKakaoAuth } from './src/server/kakaoAuth';
 import { requireAiAccess } from './src/server/aiSecurity';
 import { registerAdminAccountEndpoints } from './src/server/adminAccountEndpoints';
+import { registerJournal } from './src/server/journal';
 
 dotenv.config();
 
@@ -27,6 +28,7 @@ app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control', 'no-store'
 app.use(express.json({ limit: '48kb' }));
 registerKakaoAuth(app);
 registerMemberAccess(app);
+registerJournal(app);
 
 // Register Phase 10A Admin Account Provisioning Endpoints (Separated from execution path; migrated to Phase 10B Firebase Functions)
 // registerAdminAccountEndpoints(app);

@@ -89,7 +89,7 @@ const LOCAL_STORAGE_KEY = isDevSandbox ? 'pt_journey_dev_sandbox_v1' : 'pt_journ
 function loadLocalStore(): LocalStore {
   try {
     if (typeof localStorage !== 'undefined') {
-      const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+      const raw = isFirestoreAvailable ? null : localStorage.getItem(LOCAL_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         return {
@@ -137,7 +137,16 @@ function loadLocalStore(): LocalStore {
   };
 }
 
+// Production data lives in Firestore. Keeping a browser copy caused stale or phantom records
+// (different per domain/device) and left member data on shared devices, so only the dev
+// sandbox and Node tests persist locally.
+const persistLocally = !isFirestoreAvailable;
+if (!persistLocally) {
+  try { if (typeof localStorage !== 'undefined') localStorage.removeItem(LOCAL_STORAGE_KEY); } catch { /* storage blocked */ }
+}
+
 function saveLocalStore(store: LocalStore) {
+  if (!persistLocally) return;
   try {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(store));
@@ -148,6 +157,16 @@ function saveLocalStore(store: LocalStore) {
 }
 
 export let memoryStore: LocalStore = loadLocalStore();
+
+/** A failed server write must be shown to the user instead of looking saved on this device only. */
+function firestoreWriteFailed(label: string, err: unknown): never {
+  console.error(`[Firestore ${label} error]`, err);
+  const code = (err as { code?: string })?.code || '';
+  if (code.includes('permission-denied')) throw new Error('권한이 없어 저장하지 못했습니다. 담당 회원인지 확인하거나 관리자에게 문의해주세요.');
+  if (code.includes('unavailable') || code.includes('deadline')) throw new Error('네트워크 연결이 불안정해 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+  throw new Error('서버에 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+}
+
 
 /**
  * Fail-Closed check before modifying operational data.
@@ -606,7 +625,7 @@ export async function createMember(
     try {
       await setDoc(doc(db, 'members', memberId), newMember);
     } catch (err) {
-      console.warn('[Firestore createMember error]', err);
+      firestoreWriteFailed('createMember', err);
     }
   }
   return newMember;
@@ -681,7 +700,7 @@ export async function updateMember(
     try {
       await updateDoc(doc(db, 'members', memberId), updatePayload);
     } catch (err) {
-      console.warn('[Firestore updateMember error]', err);
+      firestoreWriteFailed('updateMember', err);
     }
   }
 
@@ -711,7 +730,7 @@ export async function updateMemberStatus(
     try {
       await updateDoc(doc(db, 'members', memberId), { status, updatedAt: now });
     } catch (err) {
-      console.warn('[Firestore updateMemberStatus error]', err);
+      firestoreWriteFailed('updateMemberStatus', err);
     }
   }
 }
@@ -739,7 +758,7 @@ export async function updateMemberNotes(
     try {
       await updateDoc(doc(db, 'members', memberId), { notes, updatedAt: now });
     } catch (err) {
-      console.warn('[Firestore updateMemberNotes error]', err);
+      firestoreWriteFailed('updateMemberNotes', err);
     }
   }
 }
@@ -840,7 +859,7 @@ export async function saveConsultation(
     try {
       await setDoc(doc(db, 'consultations', consultationId), item);
     } catch (err) {
-      console.warn('[Firestore saveConsultation error]', err);
+      firestoreWriteFailed('saveConsultation', err);
     }
   }
   return item;
@@ -1019,7 +1038,7 @@ export async function deleteGoal(
     try {
       await deleteDoc(doc(db, 'memberGoals', goalId));
     } catch (err) {
-      console.warn('[Firestore deleteGoal error]', err);
+      firestoreWriteFailed('deleteGoal', err);
     }
   }
 }
@@ -1337,7 +1356,7 @@ export async function createContract(
     try {
       await setDoc(doc(db, 'ptContracts', contractId), newContract);
     } catch (err) {
-      console.warn('[Firestore createContract error]', err);
+      firestoreWriteFailed('createContract', err);
     }
   }
   return newContract;
@@ -1373,7 +1392,7 @@ export async function updateContract(
         updatedAt: now
       });
     } catch (err) {
-      console.warn('[Firestore updateContract error]', err);
+      firestoreWriteFailed('updateContract', err);
     }
   }
 }
@@ -1398,7 +1417,7 @@ export async function deleteContract(
     try {
       await deleteDoc(doc(db, 'ptContracts', contractId));
     } catch (err) {
-      console.warn('[Firestore deleteContract error]', err);
+      firestoreWriteFailed('deleteContract', err);
     }
   }
 }
@@ -1432,7 +1451,7 @@ export async function syncContractUsage(centerId: string, contractId: string): P
         updatedAt: contract.updatedAt
       });
     } catch (err) {
-      console.warn('[Firestore syncContractUsage error]', err);
+      firestoreWriteFailed('syncContractUsage', err);
     }
   }
   return usedCount;
@@ -1576,7 +1595,7 @@ export async function createPtSession(
     try {
       await setDoc(doc(db, 'ptSessions', sessionId), newSession);
     } catch (err) {
-      console.warn('[Firestore createPtSession error]', err);
+      firestoreWriteFailed('createPtSession', err);
     }
   }
 
@@ -1651,7 +1670,7 @@ export async function updatePtSession(
         updatedAt: now
       });
     } catch (err) {
-      console.warn('[Firestore updatePtSession error]', err);
+      firestoreWriteFailed('updatePtSession', err);
     }
   }
 
@@ -1689,7 +1708,7 @@ export async function deletePtSession(
     try {
       await deleteDoc(doc(db, 'ptSessions', sessionId));
     } catch (err) {
-      console.warn('[Firestore deletePtSession error]', err);
+      firestoreWriteFailed('deletePtSession', err);
     }
   }
 
@@ -1959,7 +1978,7 @@ export async function deleteBodyMeasurement(
     try {
       await deleteDoc(doc(db, 'bodyMeasurements', measurementId));
     } catch (err) {
-      console.warn('[Firestore deleteBodyMeasurement error]', err);
+      firestoreWriteFailed('deleteBodyMeasurement', err);
     }
   }
 }
@@ -2255,7 +2274,7 @@ export async function createProgressPhoto(
     try {
       await setDoc(doc(db, 'progressPhotos', photoId), newPhoto);
     } catch (err) {
-      console.warn('[Firestore createProgressPhoto error]', err);
+      firestoreWriteFailed('createProgressPhoto', err);
     }
   }
 
@@ -2295,7 +2314,7 @@ export async function updateProgressPhoto(
         updatedAt: now
       });
     } catch (err) {
-      console.warn('[Firestore updateProgressPhoto error]', err);
+      firestoreWriteFailed('updateProgressPhoto', err);
     }
   }
 
@@ -2331,7 +2350,7 @@ export async function deleteProgressPhoto(
     try {
       await deleteDoc(doc(db, 'progressPhotos', photoId));
     } catch (err) {
-      console.warn('[Firestore deleteProgressPhoto error]', err);
+      firestoreWriteFailed('deleteProgressPhoto', err);
     }
   }
 }
@@ -2432,7 +2451,7 @@ export async function createProgressReview(
     try {
       await setDoc(doc(db, 'progressReviews', reviewId), newReview);
     } catch (err) {
-      console.warn('[Firestore createProgressReview error]', err);
+      firestoreWriteFailed('createProgressReview', err);
     }
   }
 
@@ -2461,7 +2480,7 @@ export async function deleteProgressReview(
     try {
       await deleteDoc(doc(db, 'progressReviews', reviewId));
     } catch (err) {
-      console.warn('[Firestore deleteProgressReview error]', err);
+      firestoreWriteFailed('deleteProgressReview', err);
     }
   }
 }
@@ -2636,7 +2655,7 @@ export async function updateExercise(
         updatedAt: now
       });
     } catch (err) {
-      console.warn('[Firestore updateExercise error]', err);
+      firestoreWriteFailed('updateExercise', err);
     }
   }
 }
@@ -2662,7 +2681,7 @@ export async function deleteExercise(
     try {
       await deleteDoc(doc(db, 'exercises', exerciseId));
     } catch (err) {
-      console.warn('[Firestore deleteExercise error]', err);
+      firestoreWriteFailed('deleteExercise', err);
     }
   }
 }
@@ -2723,7 +2742,7 @@ export async function createWorkoutTemplate(
     try {
       await setDoc(doc(db, 'workoutTemplates', templateId), newTemplate);
     } catch (err) {
-      console.warn('[Firestore createWorkoutTemplate error]', err);
+      firestoreWriteFailed('createWorkoutTemplate', err);
     }
   }
 
@@ -2747,7 +2766,7 @@ export async function deleteWorkoutTemplate(
     try {
       await deleteDoc(doc(db, 'workoutTemplates', templateId));
     } catch (err) {
-      console.warn('[Firestore deleteWorkoutTemplate error]', err);
+      firestoreWriteFailed('deleteWorkoutTemplate', err);
     }
   }
 }
@@ -2893,7 +2912,7 @@ export async function updatePersonalWorkoutPlan(
         updatedAt: now
       });
     } catch (err) {
-      console.warn('[Firestore updatePersonalWorkoutPlan error]', err);
+      firestoreWriteFailed('updatePersonalWorkoutPlan', err);
     }
   }
 }
@@ -2924,7 +2943,7 @@ export async function deletePersonalWorkoutPlan(
     try {
       await deleteDoc(doc(db, 'personalWorkoutPlans', planId));
     } catch (err) {
-      console.warn('[Firestore deletePersonalWorkoutPlan error]', err);
+      firestoreWriteFailed('deletePersonalWorkoutPlan', err);
     }
   }
 }
@@ -3070,7 +3089,7 @@ export async function updatePersonalWorkoutLog(
         updatedAt: now
       });
     } catch (err) {
-      console.warn('[Firestore updatePersonalWorkoutLog error]', err);
+      firestoreWriteFailed('updatePersonalWorkoutLog', err);
     }
   }
 }
@@ -3093,7 +3112,7 @@ export async function deletePersonalWorkoutLog(
     try {
       await deleteDoc(doc(db, 'personalWorkoutLogs', logId));
     } catch (err) {
-      console.warn('[Firestore deletePersonalWorkoutLog error]', err);
+      firestoreWriteFailed('deletePersonalWorkoutLog', err);
     }
   }
 }
@@ -3135,7 +3154,7 @@ export async function addTrainerFeedbackToWorkoutLog(
         updatedAt: now
       });
     } catch (err) {
-      console.warn('[Firestore addTrainerFeedbackToWorkoutLog error]', err);
+      firestoreWriteFailed('addTrainerFeedbackToWorkoutLog', err);
     }
   }
 }
@@ -4463,7 +4482,7 @@ export async function createLead(
     try {
       await setDoc(doc(db, 'leads', leadId), newLead);
     } catch (err) {
-      console.warn('[Firestore createLead error]', err);
+      firestoreWriteFailed('createLead', err);
     }
   }
 
@@ -4604,7 +4623,7 @@ export async function updateLead(
         updatedAt: now
       });
     } catch (err) {
-      console.warn('[Firestore updateLead error]', err);
+      firestoreWriteFailed('updateLead', err);
     }
   }
 
@@ -4689,7 +4708,7 @@ export async function deleteLead(
     try {
       await deleteDoc(doc(db, 'leads', leadId));
     } catch (err) {
-      console.warn('[Firestore deleteLead error]', err);
+      firestoreWriteFailed('deleteLead', err);
     }
   }
 }
@@ -4889,7 +4908,7 @@ export async function createRenewal(
     try {
       await setDoc(doc(db, 'renewals', renewalId), newRenewal);
     } catch (err) {
-      console.warn('[Firestore createRenewal error]', err);
+      firestoreWriteFailed('createRenewal', err);
     }
   }
 
@@ -5049,7 +5068,7 @@ export async function updateRenewal(
         updatedAt: now
       });
     } catch (err) {
-      console.warn('[Firestore updateRenewal error]', err);
+      firestoreWriteFailed('updateRenewal', err);
     }
   }
 
@@ -5179,7 +5198,7 @@ export async function deleteRenewal(
     try {
       await deleteDoc(doc(db, 'renewals', renewalId));
     } catch (err) {
-      console.warn('[Firestore deleteRenewal error]', err);
+      firestoreWriteFailed('deleteRenewal', err);
     }
   }
 }

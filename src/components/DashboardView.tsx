@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { getDashboardMetrics, getAttentionMembers, getWeeklyActivitySummary } from '../services/dataService';
 import type { DashboardMetrics, PtSession, Member, AttentionMemberItem, WeeklyActivitySummary } from '../types';
 import { EmptyState } from './EmptyState';
+import { UnreadCommentsCard } from './journal/UnreadCommentsCard';
 import { LeadPerformanceDashboard } from './LeadPerformanceDashboard';
 import { RenewalPerformanceDashboard } from './RenewalPerformanceDashboard';
 import {
@@ -116,6 +117,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </button>
         </div>
       </div>
+
+      <UnreadCommentsCard onSelectMember={onSelectMember} />
 
       {/* Error alert if any */}
       {error && (

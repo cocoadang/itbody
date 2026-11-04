@@ -12,7 +12,7 @@ import {
   ChevronRight,
   ChevronDown,
   X,
-  Flame
+  Activity
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -37,14 +37,11 @@ import type {
   Consultation,
   WeeklyActivitySummary
 } from '../../types';
-import { MemberHomeTab } from './MemberHomeTab';
-import { MemberSessionsTab } from './MemberSessionsTab';
-import { MemberGoalsTab } from './MemberGoalsTab';
-import { MemberPhotosTab } from './MemberPhotosTab';
-import { MemberReviewsTab } from './MemberReviewsTab';
-import { MemberWorkoutTab } from './MemberWorkoutTab';
+import { MemberSimpleHome } from './MemberSimpleHome';
+import { MemberJournalTab } from './MemberJournalTab';
+import { MemberBodyTab } from './MemberBodyTab';
 
-export type MemberPortalTab = 'home' | 'workout' | 'sessions' | 'goals' | 'photos' | 'reviews';
+export type MemberPortalTab = 'home' | 'sessions' | 'body';
 
 interface MemberPortalProps {
   memberIdOverride?: string | null;
@@ -299,62 +296,27 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ memberIdOverride, on
           </div>
         </header>
 
-        {/* 2. Main Content Area */}
+        {/* 2. Main Content Area (simplified: home, journal, body changes) */}
         <main className="flex-1 p-4 pb-24 overflow-y-auto">
           {activeTab === 'home' && (
-            <MemberHomeTab
+            <MemberSimpleHome
               member={member}
               contracts={contracts}
               sessions={sessions}
-              goals={goals}
               measurements={measurements}
-              reviews={reviews}
-              consultation={consultation}
-              weeklySummary={weeklySummary}
-              onNavigateTab={(t) => setActiveTab(t)}
-              onSelectSession={handleSelectSessionFromHome}
+              onOpenSession={(s) => { setSelectedSessionForModal(s); setActiveTab('sessions'); }}
+              onOpenBody={() => setActiveTab('body')}
             />
           )}
-
-          {activeTab === 'workout' && (
-            <MemberWorkoutTab
-              member={member}
-              centerId={currentUser?.centerId || ''}
-              onRefreshParent={loadMemberData}
-            />
-          )}
-
           {activeTab === 'sessions' && (
-            <MemberSessionsTab
+            <MemberJournalTab
+              memberId={member.memberId}
               sessions={sessions}
-              initialSelectedSession={selectedSessionForModal}
+              focusSessionId={selectedSessionForModal?.sessionId || null}
+              readOnly={currentUser?.role !== 'MEMBER'}
             />
           )}
-
-          {activeTab === 'goals' && (
-            <MemberGoalsTab goals={goals} consultation={consultation} />
-          )}
-
-          {activeTab === 'photos' && (
-            <MemberPhotosTab
-              member={member}
-              photos={photos}
-              onRefreshMember={() => loadMemberData(true)}
-              onUpdateMember={setMember}
-            />
-          )}
-
-          {activeTab === 'reviews' && (
-            <MemberReviewsTab
-              member={member}
-              reviews={reviews}
-              sessions={sessions}
-              goals={goals}
-              measurements={measurements}
-              photos={photos}
-              consultation={consultation}
-            />
-          )}
+          {activeTab === 'body' && <MemberBodyTab measurements={measurements} />}
         </main>
 
         {/* 3. Mobile Bottom Navigation Bar */}
@@ -362,81 +324,23 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ memberIdOverride, on
           id="member-bottom-nav"
           className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-stone-200/90 shadow-lg max-w-md mx-auto"
         >
-          <div className="grid grid-cols-6 h-16">
-            <button
-              type="button"
-              id="tab-btn-home"
-              onClick={() => setActiveTab('home')}
-              className={`flex flex-col items-center justify-center gap-1 transition-colors ${
-                activeTab === 'home' ? 'text-purple-600 font-bold' : 'text-stone-400 hover:text-stone-600'
-              }`}
-            >
-              <Home className="w-5 h-5" />
-              <span className="text-[10px]">홈/현황</span>
-            </button>
-
-            <button
-              type="button"
-              id="tab-btn-workout"
-              onClick={() => setActiveTab('workout')}
-              className={`flex flex-col items-center justify-center gap-1 transition-colors ${
-                activeTab === 'workout' ? 'text-amber-600 font-bold' : 'text-stone-400 hover:text-stone-600'
-              }`}
-            >
-              <Flame className="w-5 h-5" />
-              <span className="text-[10px]">운동</span>
-            </button>
-
-            <button
-              type="button"
-              id="tab-btn-sessions"
-              onClick={() => {
-                setSelectedSessionForModal(null);
-                setActiveTab('sessions');
-              }}
-              className={`flex flex-col items-center justify-center gap-1 transition-colors ${
-                activeTab === 'sessions' ? 'text-purple-600 font-bold' : 'text-stone-400 hover:text-stone-600'
-              }`}
-            >
-              <Calendar className="w-5 h-5" />
-              <span className="text-[10px]">수업일지</span>
-            </button>
-
-            <button
-              type="button"
-              id="tab-btn-goals"
-              onClick={() => setActiveTab('goals')}
-              className={`flex flex-col items-center justify-center gap-1 transition-colors ${
-                activeTab === 'goals' ? 'text-purple-600 font-bold' : 'text-stone-400 hover:text-stone-600'
-              }`}
-            >
-              <Target className="w-5 h-5" />
-              <span className="text-[10px]">운동목표</span>
-            </button>
-
-            <button
-              type="button"
-              id="tab-btn-photos"
-              onClick={() => setActiveTab('photos')}
-              className={`flex flex-col items-center justify-center gap-1 transition-colors ${
-                activeTab === 'photos' ? 'text-purple-600 font-bold' : 'text-stone-400 hover:text-stone-600'
-              }`}
-            >
-              <Camera className="w-5 h-5" />
-              <span className="text-[10px]">눈바디</span>
-            </button>
-
-            <button
-              type="button"
-              id="tab-btn-reviews"
-              onClick={() => setActiveTab('reviews')}
-              className={`flex flex-col items-center justify-center gap-1 transition-colors ${
-                activeTab === 'reviews' ? 'text-purple-600 font-bold' : 'text-stone-400 hover:text-stone-600'
-              }`}
-            >
-              <Award className="w-5 h-5" />
-              <span className="text-[10px]">성장리뷰</span>
-            </button>
+          <div className="grid grid-cols-3 h-16">
+            {([
+              ['home', Home, '홈'],
+              ['sessions', Calendar, '수업 일지'],
+              ['body', Activity, '몸 변화']
+            ] as const).map(([tab, Icon, label]) => (
+              <button
+                key={tab}
+                type="button"
+                id={`tab-btn-${tab}`}
+                onClick={() => { if (tab === 'sessions') setSelectedSessionForModal(null); setActiveTab(tab); }}
+                className={`flex flex-col items-center justify-center gap-1 transition-colors ${activeTab === tab ? 'text-stone-900 font-bold' : 'text-stone-400 hover:text-stone-600'}`}
+              >
+                <Icon className="w-5 h-5" />
+                <span className="text-[11px]">{label}</span>
+              </button>
+            ))}
           </div>
         </nav>
       </div>
