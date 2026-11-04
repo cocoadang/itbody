@@ -33,7 +33,7 @@ export const KakaoLogin: React.FC = () => {
     fetch('/api/auth/kakao/status').then(r => r.json()).then(data => { setEnabled(data.enabled === true); if (!callback) setPending(data.pending === true); }).catch(() => setEnabled(false));
   }, []);
   return <div className="space-y-3">
-    <button type="button" disabled={!enabled || busy} onClick={() => window.location.assign('/api/auth/kakao/start')} className="w-full rounded-xl bg-[#FEE500] text-[#191919] py-3 font-semibold text-sm disabled:opacity-50">{busy ? '로그인 확인 중…' : enabled ? '카카오로 로그인' : '카카오 로그인 준비 중'}</button>
+    <button type="button" disabled={!enabled || busy} onClick={() => window.location.assign('/api/auth/kakao/start?origin=' + encodeURIComponent(window.location.origin))} className="w-full rounded-xl bg-[#FEE500] text-[#191919] py-3 font-semibold text-sm disabled:opacity-50">{busy ? '로그인 확인 중…' : enabled ? '카카오로 로그인' : '카카오 로그인 준비 중'}</button>
     {invite && <p className="text-xs text-stone-600 bg-stone-50 p-3 rounded-xl">초대 링크를 확인했습니다. 카카오로 로그인하면 내 회원 정보가 자동으로 연결됩니다.</p>}
     {!invite && <p className="text-xs text-stone-600 bg-stone-50 p-3 rounded-xl">처음 이용하시나요? 카카오 로그인 → 센터 선택 → 회원 연결 요청 → 센터 승인 순서로 시작하세요. 초대 링크가 있으면 바로 연결됩니다.</p>}
     {error && <p role="alert" className="text-xs text-rose-700">{error}</p>}

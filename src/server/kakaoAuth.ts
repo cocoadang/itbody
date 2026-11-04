@@ -1,3 +1,4 @@
+import { redirectUris, redirectForOrigin, readStateCookie, validStateRecord } from './kakaoHosting';
 import type { Express, Request, Response } from 'express';
 import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { getFirebaseAdmin, requireCenterAdmin } from './adminAccountEndpoints';
@@ -38,13 +39,15 @@ export function registerKakaoAuth(app: Express) {
     const key = process.env.KAKAO_REST_API_KEY;
     const secret = process.env.KAKAO_CLIENT_SECRET;
     const uri = process.env.KAKAO_REDIRECT_URI;
+    if (!uri || !redirectUris().includes(uri)) return null;
     if (!key || !secret || !uri || !/^https:\/\//.test(uri)) return null;
     return { key, secret, uri };
   };
+  app.use('/api/auth/kakao', (_req, res, next) => { res.set('Cache-Control', 'private, no-store'); next(); });
   app.use(['/api/auth/kakao/exchange', '/api/auth/kakao/link', '/api/admin/kakao-invite'], (req, res, next) => {
     if (req.method !== 'POST') return next();
     const config = settings();
-    if (!config || req.headers.origin !== new URL(config.uri).origin) return res.status(403).json({ error: '허용되지 않은 요청입니다.' });
+    if (!config || !redirectForOrigin(req.headers.origin)) return res.status(403).json({ error: '허용되지 않은 요청입니다.' });
     return next();
   });
   app.get('/api/auth/kakao/status', (req, res) => {
@@ -80,10 +83,12 @@ export function registerKakaoAuth(app: Express) {
       const config = settings();
       if (!config) return res.status(503).send('카카오 로그인을 준비 중입니다. 이메일 로그인을 이용해주세요.');
       if (!await consumeLimit('oauth:' + req.ip, 30)) return res.status(429).send('잠시 후 다시 시도해주세요.');
+      const redirectUri = req.query.origin === undefined ? config.uri : redirectForOrigin(req.query.origin);
+      if (!redirectUri) return res.status(403).send('Origin not allowed');
       const state = random();
-      await getFirebaseAdmin()!.db.doc(`kakaoOAuthStates/${hash(state)}`).set({ expiresAt: Date.now() + 10 * 60_000, used: false });
-      setCookie(res, 'pt_kakao_state', state, 10 * 60_000);
-      const params = new URLSearchParams({ client_id: config.key, redirect_uri: config.uri, response_type: 'code', state });
+      await getFirebaseAdmin()!.db.doc(`kakaoOAuthStates/${hash(state)}`).set({ expiresAt: Date.now() + 10 * 60_000, used: false, redirectUri });
+      setCookie(res, '__session', 'kakao1.' + state, 10 * 60_000);
+      const params = new URLSearchParams({ client_id: config.key, redirect_uri: redirectUri, response_type: 'code', state });
       return res.redirect('https://kauth.kakao.com/oauth/authorize?' + params);
     } catch { return res.status(503).send('로그인 서비스를 일시적으로 이용할 수 없습니다.'); }
   });
@@ -96,17 +101,20 @@ export function registerKakaoAuth(app: Express) {
       if (!config || !admin) return kakaoFailure(res, stage);
       stage = 'STATE';
       const { code, state } = req.body;
-      const stored = cookie(req, 'pt_kakao_state');
+      const stored = readStateCookie(req.headers.cookie);
+      let redirectUri = config.uri;
       if (!config || !admin || typeof state !== 'string' || state.length > 100 || typeof code !== 'string' || code.length > 2048 || !stored || stored.length !== state.length || !timingSafeEqual(Buffer.from(stored), Buffer.from(state))) return kakaoFailure(res, stage);
       await admin.db.runTransaction(async tx => {
         const ref = admin.db.doc(`kakaoOAuthStates/${hash(state)}`);
         const data = (await tx.get(ref)).data();
-        if (!data || data.used || data.expiresAt < Date.now()) throw new Error('State');
+        if (!validStateRecord(data, req.headers.origin, config.uri)) throw new Error('State');
+        redirectUri = data!.redirectUri ?? config.uri;
         tx.update(ref, { used: true });
       });
+      setCookie(res, '__session', '', 0);
       setCookie(res, 'pt_kakao_state', '', 0);
       stage = 'KAKAO_TOKEN';
-      const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', client_id: config.key, client_secret: config.secret, redirect_uri: config.uri, code }), signal: AbortSignal.timeout(10_000) });
+      const tokenResponse = await fetch('https://kauth.kakao.com/oauth/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'authorization_code', client_id: config.key, client_secret: config.secret, redirect_uri: redirectUri, code }), signal: AbortSignal.timeout(10_000) });
       const tokenData = await tokenResponse.json();
       if (!tokenResponse.ok || !tokenData.access_token) return kakaoFailure(res, stage);
       stage = 'KAKAO_PROFILE';

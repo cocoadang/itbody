@@ -1,3 +1,4 @@
+import { redirectForOrigin } from './kakaoHosting';
 import type { Express, Request, Response, NextFunction } from 'express';
 import { createHash } from 'node:crypto';
 import { getFirebaseAdmin, requireCenterAdmin } from './adminAccountEndpoints';
@@ -114,7 +115,7 @@ export function registerMemberAccess(app: Express) {
     res.set('Cache-Control', 'no-store');
     if (req.method === 'POST') {
       const uri = process.env.KAKAO_REDIRECT_URI;
-      if (!uri || req.headers.origin !== new URL(uri).origin) return fail(res, 403);
+      if (!uri || !redirectForOrigin(req.headers.origin)) return fail(res, 403);
     }
     return next();
   }, requireMemberAccount);
@@ -171,7 +172,7 @@ export function registerMemberAccess(app: Express) {
   app.post('/api/admin/review-member-request', requireCenterAdmin, async (req, res) => {
     try {
       const uri = process.env.KAKAO_REDIRECT_URI;
-      if (!uri || req.headers.origin !== new URL(uri).origin) return fail(res, 403);
+      if (!uri || !redirectForOrigin(req.headers.origin)) return fail(res, 403);
       const caller = (req as any).caller, { id, action, memberId, confirmed } = req.body;
       if (!safeId(id) || !['APPROVE', 'REJECT'].includes(action)) return fail(res);
       if (!await consumeLimit('review:' + caller.uid, 20)) return fail(res, 429);
