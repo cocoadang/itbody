@@ -1,6 +1,6 @@
 import React from 'react';
 import { ChevronRight } from 'lucide-react';
-import type { BodyMeasurement, Member, PtContract, PtSession } from '../../types';
+import type { Member, PtContract, PtSession } from '../../types';
 import { getPriorityContract } from '../../services/dataService';
 import { formatSessionDate, sessionNote } from '../journal/JournalParts';
 
@@ -8,18 +8,15 @@ interface Props {
   member: Member;
   contracts: PtContract[];
   sessions: PtSession[];
-  measurements: BodyMeasurement[];
   onOpenSession: (s: PtSession | null) => void;
-  onOpenBody: () => void;
 }
 
-export const MemberSimpleHome: React.FC<Props> = ({ member, contracts, sessions, measurements, onOpenSession, onOpenBody }) => {
+export const MemberSimpleHome: React.FC<Props> = ({ member, contracts, sessions, onOpenSession }) => {
   const contract = getPriorityContract(contracts);
   const remaining = contract ? contract.totalSessions - contract.usedSessions : null;
   const done = sessions.filter((s) => s.status === 'COMPLETED');
   const latest = [...done].sort((a, b) => b.sessionNumber - a.sessionNumber)[0];
   const upcoming = sessions.filter((s) => s.status === 'SCHEDULED').sort((a, b) => a.date.localeCompare(b.date))[0];
-  const lastBody = [...measurements].sort((a, b) => b.measuredAt.localeCompare(a.measuredAt))[0];
 
   return (
     <div className="space-y-3">
@@ -54,23 +51,7 @@ export const MemberSimpleHome: React.FC<Props> = ({ member, contracts, sessions,
         )}
       </button>
 
-      <button type="button" onClick={onOpenBody} className="w-full text-left bg-white rounded-2xl border border-stone-200 p-4">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold text-stone-900">몸 변화</span>
-          <ChevronRight className="w-4 h-4 text-stone-400" />
-        </div>
-        {lastBody ? (
-          <p className="text-sm text-stone-700 mt-1.5">
-            {lastBody.measuredAt} 측정 · {[
-              lastBody.weightKg !== undefined && `체중 ${lastBody.weightKg}kg`,
-              lastBody.skeletalMuscleMassKg !== undefined && `골격근 ${lastBody.skeletalMuscleMassKg}kg`,
-              lastBody.bodyFatPercentage !== undefined && `체지방 ${lastBody.bodyFatPercentage}%`
-            ].filter(Boolean).join(' · ')}
-          </p>
-        ) : (
-          <p className="text-sm text-stone-500 mt-1">아직 측정 기록이 없습니다.</p>
-        )}
-      </button>
     </div>
   );
 };
+

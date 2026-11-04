@@ -284,9 +284,7 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ memberIdOverride, on
               member={member}
               contracts={contracts}
               sessions={sessions}
-              measurements={measurements}
               onOpenSession={(s) => { setSelectedSessionForModal(s); setActiveTab('sessions'); }}
-              onOpenBody={() => setActiveTab('body')}
             />
           )}
           {activeTab === 'sessions' && (
@@ -439,3 +437,4 @@ export const MemberPortal: React.FC<MemberPortalProps> = ({ memberIdOverride, on
     </div>
   );
 };
+

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { MessageCircle, Play, Send, X } from 'lucide-react';
 import type { ExerciseRecord, SessionComment, SessionMedia } from '../../types';
 
@@ -104,6 +104,25 @@ export const CommentThread: React.FC<{
   disabledReason?: string | null;
 }> = ({ comments, viewer, onSubmit, disabledReason }) => {
   const [text, setText] = useState('');
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (!input) return;
+    const resize = () => {
+      input.style.height = 'auto';
+      input.style.height = `${input.scrollHeight + 2}px`;
+    };
+    resize();
+    let width = input.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (input.clientWidth === width) return;
+      width = input.clientWidth;
+      resize();
+    });
+    observer.observe(input);
+    return () => observer.disconnect();
+  }, [text, disabledReason, !!onSubmit]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -148,17 +167,19 @@ export const CommentThread: React.FC<{
       {onSubmit && !disabledReason && (
         <form onSubmit={submit} className="flex items-end gap-2">
           <textarea
-            rows={1}
+            ref={inputRef}
+            rows={3}
+            aria-label={viewer === 'MEMBER' ? '수업 피드백' : '회원에게 답글'}
             value={text}
             maxLength={1000}
             onChange={(e) => setText(e.target.value)}
             placeholder={viewer === 'MEMBER' ? '수업 소감이나 운동 후 불편했던 점을 남겨주세요' : '회원에게 답글 남기기'}
-            className="flex-1 min-h-[40px] max-h-32 px-3 py-2 text-sm border border-stone-300 rounded-xl focus:outline-none focus:ring-1 focus:ring-stone-800 resize-y"
+            className="flex-1 min-w-0 min-h-[88px] max-h-48 overflow-y-auto px-3 py-2 text-base leading-6 border border-stone-300 rounded-xl focus:outline-none focus:ring-1 focus:ring-stone-800 resize-none"
           />
           <button
             type="submit"
             disabled={busy || !text.trim()}
-            className="h-10 px-3 rounded-xl bg-stone-900 text-white text-sm font-semibold disabled:opacity-40 flex items-center gap-1"
+            className="h-10 shrink-0 px-3 rounded-xl bg-stone-900 text-white text-sm font-semibold disabled:opacity-40 flex items-center gap-1"
           >
             <Send className="w-4 h-4" />
             <span className="sr-only sm:not-sr-only">{busy ? '등록 중' : '등록'}</span>
@@ -202,3 +223,4 @@ export function matchesSearch(
   ].join(' ').toLowerCase();
   return q.split(/\s+/).every((term) => hay.includes(term));
 }
+

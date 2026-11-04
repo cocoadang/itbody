@@ -95,7 +95,6 @@ function MainApp() {
         {/* Top Tenant & RBAC Verification Toolbar (DEV mode only) */}
         <TenantVerificationBar onDataChanged={handleDataChanged} />
 
-        {memberAccount && <div className="max-w-md w-full mx-auto px-4 pt-3"><button type="button" onClick={() => setShowMemberAccess(true)} className="text-sm underline">센터 선택 · 다른 센터 연결</button></div>}
         {/* Dedicated Member Mobile Portal */}
         <Suspense fallback={<ScreenLoading />}>
           <MemberPortal key={`member-portal-${currentUser.memberId}-${currentUser.centerId}-${refreshKey}`} />
@@ -317,3 +316,4 @@ export default function App() {
     </AuthProvider>
   );
 }
+
