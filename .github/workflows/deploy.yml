@@ -65,6 +65,22 @@ jobs:
           IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/itbody:${GITHUB_SHA}"
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
           docker build -t "$IMAGE" .
+      - name: Smoke-test image locally (no credentials, no network calls to production)
+        run: |
+          docker run -d --name smoke -p 3000:3000 "$IMAGE"
+          ok=0
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:3000/api/health > /dev/null && { ok=1; break; }
+            [ "$(docker inspect -f '{{.State.Running}}' smoke)" = true ] || break
+            sleep 2
+          done
+          docker logs smoke 2>&1 | tail -60
+          [ "$ok" = 1 ] || { echo "::error::image did not start"; exit 1; }
+          curl -sf http://localhost:3000/ | grep -q '<div id="root">'
+          for p in /server.cjs /server.cjs.map; do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:3000$p")" = 404 ] || { echo "::error::$p exposed"; exit 1; }
+          done
+          docker rm -f smoke > /dev/null
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
           workload_identity_provider: projects/${{ env.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/itbody-github/providers/github-main
