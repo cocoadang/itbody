@@ -41,6 +41,7 @@ import { generateAiSessionDraft } from '../services/aiService';
 import { useAuth } from '../context/AuthContext';
 import { DateInputField } from './DateInputField';
 import { isValidDate } from '../utils/dateInputUtils';
+import { localToday } from '../utils/dateInputUtils';
 
 interface PtSessionsTabProps {
   member: Member;
@@ -72,7 +73,7 @@ export const PtSessionsTab: React.FC<PtSessionsTabProps> = ({
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
 
   const [sessionNumber, setSessionNumber] = useState<number>(1);
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(localToday());
   const [time, setTime] = useState('14:00');
   const [status, setStatus] = useState<SessionStatus>('COMPLETED');
   const [memberCondition, setMemberCondition] = useState<MemberCondition>('GOOD');
@@ -132,7 +133,7 @@ export const PtSessionsTab: React.FC<PtSessionsTabProps> = ({
     setEditingSessionId(null);
     const nextNum = sessions.length > 0 ? Math.max(...sessions.map((s) => s.sessionNumber)) + 1 : 1;
     setSessionNumber(nextNum);
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(localToday());
     const now = new Date();
     const currentHours = String(now.getHours()).padStart(2, '0');
     const currentMins = String(now.getMinutes()).padStart(2, '0');

@@ -49,6 +49,7 @@ import { ExerciseRegistrationForm } from './ExerciseLibraryView';
 import { useAuth } from '../context/AuthContext';
 import { DateInputField } from './DateInputField';
 import { isValidDate } from '../utils/dateInputUtils';
+import { localToday } from '../utils/dateInputUtils';
 
 interface SoloWorkoutTabProps {
   member: Member;
@@ -69,7 +70,7 @@ export const SoloWorkoutTab: React.FC<SoloWorkoutTabProps> = ({ member, onUpdate
 
   // Assignment Modal
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [assignDate, setAssignDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [assignDate, setAssignDate] = useState<string>(localToday());
   const [assignTitle, setAssignTitle] = useState('');
   const [assignInstructions, setAssignInstructions] = useState('');
   const [selectedExercises, setSelectedExercises] = useState<PersonalWorkoutPlanExercise[]>([]);
@@ -135,7 +136,7 @@ export const SoloWorkoutTab: React.FC<SoloWorkoutTabProps> = ({ member, onUpdate
 
   // Open Assign Modal
   const handleOpenAssignModal = () => {
-    setAssignDate(new Date().toISOString().split('T')[0]);
+    setAssignDate(localToday());
     setAssignTitle(`${member.name} 회원 맞춤 개인운동`);
     setAssignInstructions('');
     setSelectedExercises([]);

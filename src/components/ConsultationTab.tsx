@@ -16,6 +16,7 @@ import { getConsultationByMemberId, saveConsultation } from '../services/dataSer
 import { useAuth } from '../context/AuthContext';
 import { DateInputField } from './DateInputField';
 import { isValidDate } from '../utils/dateInputUtils';
+import { localToday } from '../utils/dateInputUtils';
 
 interface ConsultationTabProps {
   member: Member;
@@ -47,7 +48,7 @@ export const ConsultationTab: React.FC<ConsultationTabProps> = ({
 
   // Form State
   const [consultationDate, setConsultationDate] = useState(
-    new Date().toISOString().split('T')[0]
+    localToday()
   );
   const [exercisePurposes, setExercisePurposes] = useState<ExercisePurpose[]>(['FITNESS']);
   const [hasExperience, setHasExperience] = useState(false);

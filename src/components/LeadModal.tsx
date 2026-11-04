@@ -35,6 +35,7 @@ import {
   Info,
   ExternalLink
 } from 'lucide-react';
+import { localToday } from '../utils/dateInputUtils';
 
 interface LeadModalProps {
   isOpen: boolean;
@@ -91,7 +92,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   // Form states
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [inquiryDate, setInquiryDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [inquiryDate, setInquiryDate] = useState(() => localToday());
   const [source, setSource] = useState<LeadSource>('방문');
   const [status, setStatus] = useState<LeadStatus>('NEW');
   const [assignedTrainerId, setAssignedTrainerId] = useState<string>('');
@@ -103,7 +104,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
 
   // OT Flow quick action inputs
   const [assignOtTrainerId, setAssignOtTrainerId] = useState('');
-  const [assignOtDate, setAssignOtDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [assignOtDate, setAssignOtDate] = useState(() => localToday());
   const [lostReasonInput, setLostReasonInput] = useState<LeadLostReason>('가격');
   const [lostMemoInput, setLostMemoInput] = useState('');
   const [showLostForm, setShowLostForm] = useState(false);
@@ -129,7 +130,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
     if (lead) {
       setName(lead.name || '');
       setPhone(sanitizePhoneNumber(lead.phone || ''));
-      setInquiryDate(lead.inquiryDate || new Date().toISOString().split('T')[0]);
+      setInquiryDate(lead.inquiryDate || localToday());
       setSource((lead.source as LeadSource) || '방문');
       setStatus(lead.status || 'NEW');
       setAssignedTrainerId(lead.assignedTrainerId || '');
@@ -140,13 +141,13 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setLostMemo(lead.lostMemo || '');
 
       setAssignOtTrainerId(lead.assignedTrainerId || '');
-      setAssignOtDate(lead.otDate || new Date().toISOString().split('T')[0]);
+      setAssignOtDate(lead.otDate || localToday());
       setLostReasonInput((lead.lostReason as LeadLostReason) || '가격');
       setLostMemoInput(lead.lostMemo || '');
     } else {
       setName('');
       setPhone('');
-      setInquiryDate(new Date().toISOString().split('T')[0]);
+      setInquiryDate(localToday());
       setSource('방문');
       setStatus('NEW');
       setAssignedTrainerId('');
@@ -157,7 +158,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setLostMemo('');
 
       setAssignOtTrainerId('');
-      setAssignOtDate(new Date().toISOString().split('T')[0]);
+      setAssignOtDate(localToday());
       setLostReasonInput('가격');
       setLostMemoInput('');
     }

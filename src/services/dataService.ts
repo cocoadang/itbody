@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, defaultDb, auth, storage, isDevSandbox, isFirestoreAvailable as configFirestoreAvailable } from '../firebase/config';
+import { localToday } from '../utils/dateInputUtils';
 
 // In automated test environments (Node.js), default to high-performance local memory store unless explicitly requested
 const isFirestoreAvailable =
@@ -1332,6 +1333,7 @@ export async function createContract(
   userRole?: UserRole,
   currentTrainerId?: string | null
 ): Promise<PtContract> {
+  invalidateCenterActivity();
   if (userRole === 'TRAINER') {
     if (!currentTrainerId || data.trainerId !== currentTrainerId) {
       throw new Error('본인 담당 회원의 이용권만 등록할 수 있습니다.');
@@ -1369,6 +1371,7 @@ export async function updateContract(
   userRole?: UserRole,
   currentTrainerId?: string | null
 ): Promise<void> {
+  invalidateCenterActivity();
   const contract = memoryStore.ptContracts[contractId];
   if (!contract) return;
   if (userRole === 'TRAINER') {
@@ -1403,6 +1406,7 @@ export async function deleteContract(
   userRole?: UserRole,
   currentTrainerId?: string | null
 ): Promise<void> {
+  invalidateCenterActivity();
   const contract = memoryStore.ptContracts[contractId];
   if (userRole === 'TRAINER' && contract) {
     if (!currentTrainerId || contract.trainerId !== currentTrainerId) {
@@ -1426,6 +1430,7 @@ export async function deleteContract(
  * Recomputes contract usedSessions strictly based on completed ptSessions (Single Source of Truth)
  */
 export async function syncContractUsage(centerId: string, contractId: string): Promise<number> {
+  invalidateCenterActivity();
   const contract = memoryStore.ptContracts[contractId];
   if (!contract) return 0;
 
@@ -1687,6 +1692,7 @@ export async function deletePtSession(
   userRole?: UserRole,
   currentTrainerId?: string | null
 ): Promise<void> {
+  invalidateCenterActivity();
   const session = memoryStore.ptSessions[sessionId];
   if (userRole === 'TRAINER' && session) {
     if (!currentTrainerId || session.trainerId !== currentTrainerId) {
@@ -1769,7 +1775,7 @@ export async function getTodayPtSessions(
     return [];
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localToday();
 
   if (isFirestoreAvailable && db) {
     try {
@@ -3388,12 +3394,46 @@ export async function getMemberTimeline(
 // PHASE 2: ATTENTION MEMBERS CALCULATION (STEP 9)
 // ==========================================
 
+// Center-wide PT passes and sessions used by the dashboard/member list (remaining sessions,
+// long absence, weekly count). Loaded once and shared by concurrent callers for a short time,
+// instead of relying on whatever happened to be cached in this browser.
+const centerActivityCache = new Map<string, { at: number; promise: Promise<void> }>();
+export function loadCenterActivity(centerId: string, userRole: UserRole, currentTrainerId?: string | null): Promise<void> {
+  if (!isFirestoreAvailable || !db) return Promise.resolve();
+  if (userRole === 'TRAINER' && !currentTrainerId) return Promise.resolve();
+  const key = `${centerId}:${userRole === 'TRAINER' ? currentTrainerId : '*'}`;
+  const cached = centerActivityCache.get(key);
+  if (cached && Date.now() - cached.at < 30_000) return cached.promise;
+  const scope = (name: string) =>
+    userRole === 'TRAINER'
+      ? query(collection(db, name), where('centerId', '==', centerId), where('trainerId', '==', currentTrainerId))
+      : query(collection(db, name), where('centerId', '==', centerId));
+  const promise = Promise.all([getDocs(scope('ptContracts')), getDocs(scope('ptSessions'))])
+    .then(([contracts, sessions]) => {
+      contracts.forEach((d) => { const c = d.data() as PtContract; memoryStore.ptContracts[c.contractId] = c; });
+      sessions.forEach((d) => { const x = d.data() as PtSession; memoryStore.ptSessions[x.sessionId] = x; });
+    })
+    .catch((err) => {
+      centerActivityCache.delete(key);
+      console.warn('[Firestore] center activity load failed:', err);
+    });
+  centerActivityCache.set(key, { at: Date.now(), promise });
+  return promise;
+}
+export function invalidateCenterActivity() {
+  centerActivityCache.clear();
+}
+
 export async function getAttentionMembers(
   centerId: string,
   userRole: UserRole,
-  currentTrainerId?: string | null
+  currentTrainerId?: string | null,
+  options: { members?: Member[]; simplified?: boolean } = {}
 ): Promise<AttentionMemberItem[]> {
-  const members = await getMembers(centerId, userRole, currentTrainerId);
+  const [members] = await Promise.all([
+    options.members ? Promise.resolve(options.members) : getMembers(centerId, userRole, currentTrainerId),
+    loadCenterActivity(centerId, userRole, currentTrainerId)
+  ]);
   const activeMembers = members.filter((m) => m.status === 'ACTIVE');
   const now = new Date();
 
@@ -3441,11 +3481,11 @@ export async function getAttentionMembers(
       }
     }
 
-    // 3. NO_GOAL (목표 미설정 독립 판정)
+    // 3. NO_GOAL (목표 미설정 독립 판정) — goals/consultation/reviews are hidden in the simplified app
     const goals = Object.values(memoryStore.memberGoals).filter(
       (g) => g.centerId === centerId && g.memberId === member.memberId && g.status === 'ACTIVE'
     );
-    if (goals.length === 0) {
+    if (!options.simplified && goals.length === 0) {
       reasonCodes.push('NO_GOAL');
       reasons.push('목표 미설정 (신규 목표 수립 필요)');
     }
@@ -3454,13 +3494,13 @@ export async function getAttentionMembers(
     const consultation = Object.values(memoryStore.consultations).find(
       (c) => c.centerId === centerId && c.memberId === member.memberId
     );
-    if (!consultation) {
+    if (!options.simplified && !consultation) {
       reasonCodes.push('NO_CONSULTATION');
       reasons.push('최초 상담 미진행 (초기 인터뷰 필요)');
     }
 
     // 5. PROGRESS_REVIEW_DUE (STEP 18: 10회 단위 COMPLETED session 도달 시 성과 리뷰 예정 알림)
-    if (completedSessions.length >= 10) {
+    if (!options.simplified && completedSessions.length >= 10) {
       const milestone = Math.floor(completedSessions.length / 10) * 10;
       const memberReviews = Object.values(memoryStore.progressReviews || {}).filter(
         (r) => r.centerId === centerId && r.memberId === member.memberId
@@ -3509,11 +3549,13 @@ export async function getDashboardMetrics(
   recentMembers: Member[];
   attentionMembers: AttentionMemberItem[];
 }> {
-  const [allMembers, todaySessions, attentionMembers] = await Promise.all([
+  // Members are read once and shared with the attention calculation.
+  const [allMembers, todaySessions] = await Promise.all([
     getMembers(centerId, userRole, currentTrainerId),
     getTodayPtSessions(centerId, userRole, currentTrainerId),
-    getAttentionMembers(centerId, userRole, currentTrainerId)
+    loadCenterActivity(centerId, userRole, currentTrainerId)
   ]);
+  const attentionMembers = await getAttentionMembers(centerId, userRole, currentTrainerId, { members: allMembers, simplified: true });
 
   const activeMemberCount = allMembers.filter((m) => m.status === 'ACTIVE').length;
   const needsAttentionCount = attentionMembers.length;

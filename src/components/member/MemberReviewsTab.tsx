@@ -15,6 +15,7 @@ import {
   calculateExerciseProgress
 } from '../../utils/progressCalculations';
 import { ReviewPresentationCard } from '../ReviewPresentationCard';
+import { localToday } from '../../utils/dateInputUtils';
 
 interface MemberReviewsTabProps {
   member: Member;
@@ -58,12 +59,12 @@ export const MemberReviewsTab: React.FC<MemberReviewsTabProps> = ({
   const currentPeriodStart =
     selectedReview?.periodStart ||
     member.startDate ||
-    (completedSessions[0]?.date ?? new Date().toISOString().split('T')[0]);
+    (completedSessions[0]?.date ?? localToday());
 
   const currentPeriodEnd =
     selectedReview?.periodEnd ||
     (completedSessions[completedSessions.length - 1]?.date ??
-      new Date().toISOString().split('T')[0]);
+      localToday());
 
   const periodSessions = useMemo(() => {
     return completedSessions.filter(

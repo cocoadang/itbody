@@ -4,7 +4,6 @@ import type { ExerciseRecord, ExerciseSet, Member, PtContract, PtSession, Sessio
 import {
   createPtSession,
   deletePtSession,
-  getContractsByMember,
   getExercises,
   getPriorityContract,
   getSessionsByMember,
@@ -33,8 +32,22 @@ import {
 
 interface SessionJournalTabProps {
   member: Member;
+  /** Loaded by the member screen; refreshed through onSessionUpdated after a save. */
+  sessions: PtSession[];
+  contracts: PtContract[];
   trainerName?: string;
-  onSessionUpdated?: () => void;
+  onSessionUpdated?: () => Promise<void> | void;
+}
+
+// The center's exercise list rarely changes; read it once per page instead of per member.
+const libraryCache = new Map<string, Promise<string[]>>();
+function loadLibrary(centerId: string) {
+  if (!libraryCache.has(centerId)) {
+    libraryCache.set(centerId, getExercises(centerId)
+      .then((list) => [...new Set([...DEFAULT_EXERCISES, ...list.map((e) => e.name)])])
+      .catch(() => { libraryCache.delete(centerId); return DEFAULT_EXERCISES; }));
+  }
+  return libraryCache.get(centerId)!;
 }
 
 const DEFAULT_EXERCISES = ['스쿼트', '데드리프트', '벤치프레스', '랫풀다운', '레그프레스', '숄더프레스', '시티드 로우', '런지', '힙쓰러스트', '플랭크'];
@@ -79,14 +92,14 @@ function fromDraft(d: DraftExercise): ExerciseRecord {
   return { exerciseName: d.name.trim(), sets, ...(d.memo ? { memo: d.memo } : {}) };
 }
 
-export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, trainerName = '담당 트레이너', onSessionUpdated }) => {
+export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, sessions: sessionsProp, contracts, trainerName = '담당 트레이너', onSessionUpdated }) => {
   const { currentUser } = useAuth();
-  const [sessions, setSessions] = useState<PtSession[]>([]);
-  const [contracts, setContracts] = useState<PtContract[]>([]);
+  // Local copy so media removals show immediately; replaced whenever the parent reloads.
+  const [sessions, setSessions] = useState<PtSession[]>(sessionsProp);
+  useEffect(() => setSessions(sessionsProp), [sessionsProp]);
   const [comments, setComments] = useState<SessionComment[]>([]);
   const [commentsError, setCommentsError] = useState<string | null>(null);
   const [library, setLibrary] = useState<string[]>(DEFAULT_EXERCISES);
-  const [isLoading, setIsLoading] = useState(true);
   const [query, setQuery] = useState('');
 
   // Form
@@ -123,32 +136,13 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, tr
     }
   };
 
-  const loadData = async () => {
-    if (!currentUser) return;
-    setIsLoading(true);
-    try {
-      const [sessionList, contractList] = await Promise.all([
-        getSessionsByMember(member.centerId, member.memberId, currentUser.role, currentUser.trainerId),
-        getContractsByMember(member.centerId, member.memberId, currentUser.role, currentUser.trainerId)
-      ]);
-      setSessions(sessionList);
-      setContracts(contractList);
-    } catch (err) {
-      console.error('Failed to load journal:', err);
-    } finally {
-      setIsLoading(false);
-    }
+  const reload = async () => {
+    await onSessionUpdated?.();
   };
 
   useEffect(() => {
-    loadData();
     loadComments();
-    getExercises(member.centerId)
-      .then((list) => {
-        const names = [...new Set([...DEFAULT_EXERCISES, ...list.map((e) => e.name)])];
-        setLibrary(names);
-      })
-      .catch(() => undefined);
+    loadLibrary(member.centerId).then(setLibrary);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [member.memberId, member.centerId]);
 
@@ -276,8 +270,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, tr
         }
       }
       setProgress('');
-      await loadData();
-      onSessionUpdated?.();
+      await reload();
       if (failed.length) {
         // The journal is saved; keep the form open on the saved record so files can be retried.
         setFiles([]);
@@ -301,8 +294,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, tr
     try {
       for (const m of s.media || []) await removeSessionMedia(s.sessionId, m.mediaId).catch(() => undefined);
       await deletePtSession(member.centerId, s.sessionId, currentUser.role, currentUser.trainerId);
-      await loadData();
-      onSessionUpdated?.();
+      await reload();
     } catch (err: any) {
       alert(err?.message || '삭제하지 못했습니다.');
     }
@@ -312,15 +304,6 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, tr
     const c = await addSessionComment(sessionId, text);
     setComments((prev) => [...prev, c]);
   };
-
-  if (isLoading) {
-    return (
-      <div className="p-8 text-center text-stone-500 text-sm">
-        <div className="w-6 h-6 border-2 border-stone-800 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        수업 일지를 불러오는 중입니다...
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-4">

@@ -6,6 +6,7 @@ import { X, UserPlus, AlertCircle, Loader2, Edit2 } from 'lucide-react';
 import { DateInputField } from './DateInputField';
 import { isValidDate } from '../utils/dateInputUtils';
 import { sanitizePhoneNumber, isValidPhoneNumber, PHONE_ERROR_MESSAGE } from '../utils/phoneUtils';
+import { localToday } from '../utils/dateInputUtils';
 
 interface NewMemberModalProps {
   isOpen: boolean;
@@ -42,7 +43,7 @@ export const NewMemberModal: React.FC<NewMemberModalProps> = ({
   const [birthDate, setBirthDate] = useState('1995-01-01');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [startDate, setStartDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [startDate, setStartDate] = useState(() => localToday());
   const [status, setStatus] = useState<MemberStatus>('ACTIVE');
   const [trainerId, setTrainerId] = useState('');
   const [notes, setNotes] = useState('');
@@ -67,7 +68,7 @@ export const NewMemberModal: React.FC<NewMemberModalProps> = ({
       setBirthDate('1995-01-01');
       setPhone(sanitizePhoneNumber(initialLeadData.phone || ''));
       setEmail('');
-      setStartDate(new Date().toISOString().split('T')[0]);
+      setStartDate(localToday());
       setStatus('ACTIVE');
       setTrainerId(initialLeadData.trainerId || '');
       setNotes(initialLeadData.notes ? `[신규문의 인계 메모]: ${initialLeadData.notes}` : '');
@@ -77,7 +78,7 @@ export const NewMemberModal: React.FC<NewMemberModalProps> = ({
       setBirthDate('1995-01-01');
       setPhone('');
       setEmail('');
-      setStartDate(new Date().toISOString().split('T')[0]);
+      setStartDate(localToday());
       setStatus('ACTIVE');
       setNotes('');
     }

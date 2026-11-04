@@ -14,6 +14,7 @@ import {
   Sparkles,
   FileCheck
 } from 'lucide-react';
+import { localToday } from '../utils/dateInputUtils';
 
 interface RenewalContractModalProps {
   isOpen: boolean;
@@ -51,7 +52,7 @@ export const RenewalContractModal: React.FC<RenewalContractModalProps> = ({
   useEffect(() => {
     if (isOpen && renewal) {
       setError(null);
-      const today = new Date().toISOString().split('T')[0];
+      const today = localToday();
       setStartDate(today);
 
       // Default expiration date: 3 months from today

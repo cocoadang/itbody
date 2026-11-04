@@ -74,7 +74,9 @@ async function resolveCaller(req: Request): Promise<Caller | null> {
   const admin = getFirebaseAdmin();
   if (!bearer || !admin) return null;
   try {
-    const token = await admin.auth.verifyIdToken(bearer, true);
+    // Writes also check token revocation (an extra Auth API call); reads rely on the
+    // signature/expiry plus the live account and binding checks below.
+    const token = await admin.auth.verifyIdToken(bearer, req.method !== 'GET');
     if (token.portalAccount) {
       const centerId = token.portalCenterId, memberId = token.portalMemberId;
       if (!safeId(centerId) || !safeId(memberId)) return null;
@@ -99,7 +101,8 @@ async function withCaller(req: Request, res: Response, run: (caller: Caller) => 
   const caller = await resolveCaller(req);
   if (!caller) return deny(res, 401, '로그인이 필요합니다.');
   try {
-    if (!await consumeLimit('journal-minute:' + caller.uid, 60)) return deny(res, 429, '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.');
+    // Reads are cheap and already scoped to the caller; only writes are rate limited.
+    if (req.method !== 'GET' && !await consumeLimit('journal-minute:' + caller.uid, 60)) return deny(res, 429, '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.');
     await run(caller);
   } catch (err) {
     console.error('[journal]', (err as Error)?.message);

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getDashboardMetrics, getAttentionMembers, getWeeklyActivitySummary } from '../services/dataService';
+import { getDashboardMetrics, getWeeklyActivitySummary } from '../services/dataService';
 import type { DashboardMetrics, PtSession, Member, AttentionMemberItem, WeeklyActivitySummary } from '../types';
 import { EmptyState } from './EmptyState';
 import { UnreadCommentsCard } from './journal/UnreadCommentsCard';
@@ -52,20 +52,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     try {
       setLoading(true);
       setError(null);
-      const [dashData, attentionData, weeklyData] = await Promise.all([
-        getDashboardMetrics(currentUser.centerId, currentUser.role, currentUser.trainerId),
-        getAttentionMembers(currentUser.centerId, currentUser.role, currentUser.trainerId),
-        getWeeklyActivitySummary(
-          currentUser.centerId,
-          null,
-          undefined,
-          currentUser.role === 'TRAINER' ? currentUser.trainerId : null
-        )
-      ]);
+      // One pass: members, today's sessions and center activity are each read once.
+      const dashData = await getDashboardMetrics(currentUser.centerId, currentUser.role, currentUser.trainerId);
+      const weeklyData = await getWeeklyActivitySummary(
+        currentUser.centerId,
+        null,
+        undefined,
+        currentUser.role === 'TRAINER' ? currentUser.trainerId : null
+      );
       setMetrics(dashData.metrics);
       setTodaySessions(dashData.todaySessions);
       setRecentMembers(dashData.recentMembers);
-      setAttentionMembers(attentionData);
+      setAttentionMembers(dashData.attentionMembers);
       setWeeklyActivity(weeklyData);
     } catch (err) {
       console.error('[Dashboard fetch error]', err);

@@ -1,7 +1,7 @@
 import { MemberJoinRequests } from './MemberJoinRequests';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getMembers, getTrainers, getAttentionMembers } from '../services/dataService';
+import { getMembers, getTrainers, getAttentionMembers, loadCenterActivity } from '../services/dataService';
 import type { Member, Trainer, MemberStatus } from '../types';
 import { EmptyState } from './EmptyState';
 import { NewMemberModal } from './NewMemberModal';
@@ -50,11 +50,13 @@ export const MemberList: React.FC<MemberListProps> = ({
     try {
       setLoading(true);
       setError(null);
-      const [membersData, trainersData, attentionData] = await Promise.all([
+      const [membersData, trainersData] = await Promise.all([
         getMembers(currentUser.centerId, currentUser.role, currentUser.trainerId),
         getTrainers(currentUser.centerId),
-        getAttentionMembers(currentUser.centerId, currentUser.role, currentUser.trainerId)
+        loadCenterActivity(currentUser.centerId, currentUser.role, currentUser.trainerId)
       ]);
+      // Attention flags reuse the members just loaded (no second member query).
+      const attentionData = await getAttentionMembers(currentUser.centerId, currentUser.role, currentUser.trainerId, { members: membersData, simplified: true });
       setMembers(membersData);
       setTrainers(trainersData);
       setAttentionMemberIds(new Set(attentionData.map((item) => item.member.memberId)));

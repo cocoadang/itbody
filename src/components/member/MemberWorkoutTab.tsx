@@ -37,6 +37,7 @@ import {
   updatePersonalWorkoutPlan
 } from '../../services/dataService';
 import { getYoutubeEmbedUrl, ExerciseRegistrationForm } from '../ExerciseLibraryView';
+import { localToday } from '../../utils/dateInputUtils';
 
 interface MemberWorkoutTabProps {
   member: Member;
@@ -378,7 +379,7 @@ export const MemberWorkoutTab: React.FC<MemberWorkoutTabProps> = ({
   };
 
   // Check if today has assigned plan
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localToday();
   const todayPlan = plans.find((p) => p.date === todayStr && p.status !== 'COMPLETED');
   const completedTodayLogs = logs.filter((l) => l.date === todayStr);
 

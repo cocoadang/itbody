@@ -52,6 +52,7 @@ import {
 import { ReviewPresentationCard } from './ReviewPresentationCard';
 import { DateInputField } from './DateInputField';
 import { isValidDate } from '../utils/dateInputUtils';
+import { localToday } from '../utils/dateInputUtils';
 
 interface PerformanceReportTabProps {
   member: Member;
@@ -93,9 +94,9 @@ export const PerformanceReportTab: React.FC<PerformanceReportTabProps> = ({
   // Create Review Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [reviewType, setReviewType] = useState<ProgressReviewType>('TEN_SESSION');
-  const [reviewDate, setReviewDate] = useState(new Date().toISOString().split('T')[0]);
+  const [reviewDate, setReviewDate] = useState(localToday());
   const [periodStart, setPeriodStart] = useState(member.startDate || '2026-01-01');
-  const [periodEnd, setPeriodEnd] = useState(new Date().toISOString().split('T')[0]);
+  const [periodEnd, setPeriodEnd] = useState(localToday());
   const [summary, setSummary] = useState('');
   const [trainerFeedback, setTrainerFeedback] = useState('');
   const [nextGoalsInput, setNextGoalsInput] = useState('');
@@ -156,7 +157,7 @@ export const PerformanceReportTab: React.FC<PerformanceReportTabProps> = ({
 
   // Aggregated data for selected review (or current live progress if none selected)
   const currentPeriodStart = selectedReview?.periodStart || member.startDate || '2026-01-01';
-  const currentPeriodEnd = selectedReview?.periodEnd || new Date().toISOString().split('T')[0];
+  const currentPeriodEnd = selectedReview?.periodEnd || localToday();
 
   // Measurements within review period
   const periodMeasurements = useMemo(() => {
@@ -245,9 +246,9 @@ export const PerformanceReportTab: React.FC<PerformanceReportTabProps> = ({
 
     setReviewType(defType);
     setMilestoneCount(defMilestone);
-    setReviewDate(new Date().toISOString().split('T')[0]);
+    setReviewDate(localToday());
     setPeriodStart(member.startDate || '2026-01-01');
-    setPeriodEnd(new Date().toISOString().split('T')[0]);
+    setPeriodEnd(localToday());
 
     // Pre-populate summary draft
     const startW = weightComp.startValue ? `${weightComp.startValue}kg` : '';

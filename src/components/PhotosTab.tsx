@@ -29,6 +29,7 @@ import {
 } from '../services/dataService';
 import { DateInputField } from './DateInputField';
 import { isValidDate } from '../utils/dateInputUtils';
+import { localToday } from '../utils/dateInputUtils';
 
 interface PhotosTabProps {
   member: Member;
@@ -82,7 +83,7 @@ export const PhotosTab: React.FC<PhotosTabProps> = ({
   // Add Photo Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [uploadDate, setUploadDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
+    localToday()
   );
   const [uploadViewType, setUploadViewType] = useState<PhotoViewType>('FRONT');
   const [uploadCaption, setUploadCaption] = useState<string>('');

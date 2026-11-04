@@ -83,6 +83,7 @@ import {
 import { MemberPortal } from './member/MemberPortal';
 import { provisionAccount, generateResetPasswordLink } from '../services/adminAccountService';
 import { PasswordLinkModal } from './PasswordLinkModal';
+import { localToday } from '../utils/dateInputUtils';
 
 interface MemberDetailViewProps {
   memberId: string;
@@ -166,7 +167,7 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
   const [contractTitle, setContractTitle] = useState('PT 10회 정규 코칭 패키지');
   const [contractTotalSessions, setContractTotalSessions] = useState(10);
-  const [contractStartDate, setContractStartDate] = useState(new Date().toISOString().split('T')[0]);
+  const [contractStartDate, setContractStartDate] = useState(localToday());
   const [contractEndDate, setContractEndDate] = useState(
     new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
@@ -197,14 +198,15 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
     try {
       setLoading(true);
       setError(null);
-      const [memberData, trainersData] = await Promise.all([
-        getMemberById(
-          currentUser.centerId,
-          memberId,
-          currentUser.role,
-          currentUser.trainerId
-        ),
-        getTrainers(currentUser.centerId)
+      // Everything for this screen in one parallel round. The activity timeline is no longer
+      // shown, so its six extra queries (duplicating the ones below) are not made.
+      const [memberData, trainersData, goalsData, contractsData, measurementsData, sessionsData] = await Promise.all([
+        getMemberById(currentUser.centerId, memberId, currentUser.role, currentUser.trainerId),
+        getTrainers(currentUser.centerId),
+        getGoalsByMember(currentUser.centerId, memberId, currentUser.role, currentUser.trainerId),
+        getContractsByMember(currentUser.centerId, memberId, currentUser.role, currentUser.trainerId),
+        getBodyMeasurements(currentUser.centerId, memberId, currentUser.role, currentUser.trainerId),
+        getSessionsByMember(currentUser.centerId, memberId, currentUser.role, currentUser.trainerId)
       ]);
 
       if (!memberData) {
@@ -213,19 +215,9 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
       } else {
         setMember(memberData);
         setNotes(memberData.notes || '');
-
-        // Fetch Phase 2 Goals, Contracts, Timeline, and Phase 3 Measurements, Sessions
-        const [goalsData, contractsData, timelineData, measurementsData, sessionsData] = await Promise.all([
-          getGoalsByMember(currentUser.centerId, memberId, currentUser.role, currentUser.trainerId),
-          getContractsByMember(currentUser.centerId, memberId, currentUser.role, currentUser.trainerId),
-          getMemberTimeline(currentUser.centerId, memberId, currentUser.role, currentUser.trainerId),
-          getBodyMeasurements(currentUser.centerId, memberId, currentUser.role, currentUser.trainerId),
-          getSessionsByMember(currentUser.centerId, memberId, currentUser.role, currentUser.trainerId)
-        ]);
-
         setGoals(goalsData);
         setContracts(contractsData);
-        setTimelineEvents(timelineData);
+        setTimelineEvents([]);
         setMeasurements(measurementsData);
         setSessions(sessionsData);
       }
@@ -242,18 +234,27 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
     fetchMember();
   }, [fetchMember]);
 
+  // After a journal save only sessions and PT passes change.
+  const refreshJournal = async () => {
+    if (!currentUser || !member) return;
+    const [contractsData, sessionsData] = await Promise.all([
+      getContractsByMember(currentUser.centerId, member.memberId, currentUser.role, currentUser.trainerId),
+      getSessionsByMember(currentUser.centerId, member.memberId, currentUser.role, currentUser.trainerId)
+    ]);
+    setContracts(contractsData);
+    setSessions(sessionsData);
+  };
+
   const refreshTimelineAndGoals = async () => {
     if (!currentUser || !member) return;
-    const [goalsData, contractsData, timelineData, measurementsData, sessionsData] = await Promise.all([
+    const [goalsData, contractsData, measurementsData, sessionsData] = await Promise.all([
       getGoalsByMember(currentUser.centerId, member.memberId, currentUser.role, currentUser.trainerId),
       getContractsByMember(currentUser.centerId, member.memberId, currentUser.role, currentUser.trainerId),
-      getMemberTimeline(currentUser.centerId, member.memberId, currentUser.role, currentUser.trainerId),
       getBodyMeasurements(currentUser.centerId, member.memberId, currentUser.role, currentUser.trainerId),
       getSessionsByMember(currentUser.centerId, member.memberId, currentUser.role, currentUser.trainerId)
     ]);
     setGoals(goalsData);
     setContracts(contractsData);
-    setTimelineEvents(timelineData);
     setMeasurements(measurementsData);
     setSessions(sessionsData);
   };
@@ -1424,8 +1425,10 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
         {activeTab === 'pt-sessions' && (
           <SessionJournalTab
             member={member}
+            sessions={sessions}
+            contracts={contracts}
             trainerName={assignedTrainer?.name}
-            onSessionUpdated={refreshTimelineAndGoals}
+            onSessionUpdated={refreshJournal}
           />
         )}
 

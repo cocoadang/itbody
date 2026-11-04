@@ -94,3 +94,9 @@ export function normalizeDateInput(val: string): string {
   if (!val) return '';
   return formatDateInput(val);
 }
+
+/** Today's date as YYYY-MM-DD in the device's local time zone (toISOString is UTC, which is "yesterday" before 9am in Korea). */
+export function localToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}

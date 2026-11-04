@@ -41,6 +41,7 @@ import {
 } from '../services/dataService';
 import { DateInputField } from './DateInputField';
 import { isValidDate } from '../utils/dateInputUtils';
+import { localToday } from '../utils/dateInputUtils';
 
 interface BodyChangesTabProps {
   member: Member;
@@ -889,7 +890,7 @@ const MeasurementModal: React.FC<MeasurementModalProps> = ({
   onSuccess
 }) => {
   const [measuredAt, setMeasuredAt] = useState(
-    measurement?.measuredAt || new Date().toISOString().split('T')[0]
+    measurement?.measuredAt || localToday()
   );
   const [weightKg, setWeightKg] = useState(measurement?.weightKg?.toString() || '');
   const [skeletalMuscleMassKg, setSkeletalMuscleMassKg] = useState(

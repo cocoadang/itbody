@@ -73,15 +73,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     let revision = 0;
+    // The ID token refreshes about once an hour. Reloading the profile then showed the
+    // full-screen loader, remounted the app and discarded anything being typed, so the
+    // profile is reloaded only when the signed-in account or its member center changes.
+    let loadedKey = '';
     const unsubscribe = onIdTokenChanged(auth, async (user) => {
       const version = ++revision;
       setFirebaseAuthUser(user);
       if (user) {
+        let token: Awaited<ReturnType<typeof user.getIdTokenResult>>;
+        try { token = await user.getIdTokenResult(); } catch { token = null as any; }
+        if (version !== revision) return;
+        const key = token ? `${user.uid}|${token.claims.portalCenterId || ''}|${token.claims.portalMemberId || ''}` : '';
+        if (key && key === loadedKey) return;
         setIsLoading(true);
         setProfileError(null);
+        let failed = false;
 
         try {
-          const token = await user.getIdTokenResult();
+          if (!token) token = await user.getIdTokenResult();
           if (version !== revision) return;
           setMemberAccount(token.claims.portalAccount === true);
           if (token.claims.portalAccount === true) {
@@ -124,54 +134,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 let resolvedTrainerId = udata.trainerId;
                 let resolvedName = udata.name || user.displayName || '사용자';
 
-                // If role is TRAINER, resolve linked trainer information from trainers collection
+                // Trainer link and center name are independent lookups: run them together.
+                const [trainersList, centerName] = await Promise.all([
+                  role === 'TRAINER'
+                    ? getDocs(query(collection(db, 'trainers'), where('centerId', '==', centerId.trim())))
+                        .then((snap) => snap.docs.map((d) => d.data() as any))
+                        .catch((trainerLookupErr) => { console.warn('[AuthContext] Could not query trainers collection:', trainerLookupErr); return [] as any[]; })
+                    : Promise.resolve([] as any[]),
+                  udata.centerName
+                    ? Promise.resolve(udata.centerName as string)
+                    : getDoc(doc(db, 'centers', centerId.trim())).then((c) => (c.exists() ? c.data()?.name || '' : '')).catch(() => '')
+                ]);
+
                 if (role === 'TRAINER') {
-                  try {
-                    const trainersSnap = await getDocs(
-                      query(collection(db, 'trainers'), where('centerId', '==', centerId.trim()))
-                    );
-                    const trainersList: any[] = [];
-                    trainersSnap.forEach((docSnap) => {
-                      trainersList.push(docSnap.data());
-                    });
-
-                    // 1st Priority: UID match (Highest Priority)
-                    let matchedTrainer = trainersList.find((t) => t.uid && t.uid === user.uid);
-
-                    // 2nd Priority: user document's trainerId match
-                    if (!matchedTrainer && udata.trainerId) {
-                      matchedTrainer = trainersList.find((t) => t.trainerId === udata.trainerId);
-                    }
-
-                    // 3rd Priority (Fallback): loginEmail match
-                    if (!matchedTrainer && user.email) {
-                      const lowerEmail = user.email.toLowerCase();
-                      matchedTrainer = trainersList.find(
-                        (t) => t.loginEmail && t.loginEmail.toLowerCase() === lowerEmail
-                      );
-                    }
-
-                    if (matchedTrainer) {
-                      resolvedTrainerId = matchedTrainer.trainerId;
-                      resolvedName = matchedTrainer.name || resolvedName;
-                    }
-                  } catch (trainerLookupErr) {
-                    console.warn('[AuthContext] Could not query trainers collection:', trainerLookupErr);
+                  // 1st Priority: UID match, 2nd: user document's trainerId, 3rd: loginEmail
+                  let matchedTrainer = trainersList.find((t) => t.uid && t.uid === user.uid);
+                  if (!matchedTrainer && udata.trainerId) {
+                    matchedTrainer = trainersList.find((t) => t.trainerId === udata.trainerId);
+                  }
+                  if (!matchedTrainer && user.email) {
+                    const lowerEmail = user.email.toLowerCase();
+                    matchedTrainer = trainersList.find((t) => t.loginEmail && t.loginEmail.toLowerCase() === lowerEmail);
+                  }
+                  if (matchedTrainer) {
+                    resolvedTrainerId = matchedTrainer.trainerId;
+                    resolvedName = matchedTrainer.name || resolvedName;
                   }
                 }
-
-                // Resolve center name if available
-                let resolvedCenterName = udata.centerName || '';
-                if (!resolvedCenterName && centerId) {
-                  try {
-                    const centerSnap = await getDoc(doc(db, 'centers', centerId.trim()));
-                    if (centerSnap.exists()) {
-                      resolvedCenterName = centerSnap.data()?.name || '';
-                    }
-                  } catch {
-                    // Ignore non-fatal center lookup error
-                  }
-                }
+                const resolvedCenterName = centerName;
                 setUserCenterName(resolvedCenterName);
 
                 const profile: UserProfile = {
@@ -199,14 +189,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setProfileError('Firestore 데이터베이스에 연결할 수 없습니다.');
           }
         } catch (err: any) {
+          failed = true;
           console.error('[AuthContext] Failed to load Firestore users/{uid}:', err);
           setRealUserProfile(null);
           setUserCenterName('');
           setProfileError(`사용자 프로필을 확인하는 중 오류가 발생했습니다: ${err.message || '접근 권한 부족'}`);
         } finally {
-          if (version === revision) setIsLoading(false);
+          if (version === revision) {
+            loadedKey = failed ? '' : key;
+            setIsLoading(false);
+          }
         }
       } else {
+        loadedKey = '';
         setMemberAccount(false); setMemberships([]); setMemberRequests([]);
         setRealUserProfile(null);
         setUserCenterName('');
