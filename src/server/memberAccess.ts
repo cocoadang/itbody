@@ -15,7 +15,14 @@ export async function requireMemberAccount(req: Request, res: Response, next: Ne
     if (!header.startsWith('Bearer ')) return fail(res, 401);
     const admin = getFirebaseAdmin()!;
     const decoded = await admin.auth.verifyIdToken(header.slice(7), true);
-    const [profile, account] = await Promise.all([admin.db.doc(`users/${decoded.uid}`).get(), admin.db.doc(`memberAccounts/${decoded.uid}`).get()]);
+    let [profile, account] = await Promise.all([admin.db.doc(`users/${decoded.uid}`).get(), admin.db.doc(`memberAccounts/${decoded.uid}`).get()]);
+    // A signed-in Kakao member whose account records were removed (e.g. data cleanup) gets
+    // fresh, unlinked records instead of a dead end. The token proves the Kakao login.
+    const kakaoId = /^kakao_(\d{1,20})$/.exec(decoded.uid)?.[1];
+    if (kakaoId && decoded.portalAccount === true && !profile.exists && !account.exists) {
+      await ensureKakaoAccount(kakaoId);
+      [profile, account] = await Promise.all([admin.db.doc(`users/${decoded.uid}`).get(), admin.db.doc(`memberAccounts/${decoded.uid}`).get()]);
+    }
     if (profile.data()?.role !== 'MEMBER' || !account.exists || account.data()?.status !== 'ACTIVE') return fail(res, 403);
     (req as any).memberUid = decoded.uid;
     return next();
