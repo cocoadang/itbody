@@ -181,7 +181,8 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
   const [isEditMemberModalOpen, setIsEditMemberModalOpen] = useState(false);
 
   // Phase 10B Account Provisioning & Password Reset Link Modal State (Firebase Functions 2nd Gen 활성화)
-  const IS_AUTO_PROVISIONING_ENABLED = true;
+  // Members sign in with Kakao only; email account issuing and reset links are retired.
+  const IS_AUTO_PROVISIONING_ENABLED = false;
   const [isAccountActionLoading, setIsAccountActionLoading] = useState(false);
   const [accountActionError, setAccountActionError] = useState<string | null>(null);
   const [passwordModalState, setPasswordModalState] = useState<{

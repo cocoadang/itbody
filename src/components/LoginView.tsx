@@ -168,77 +168,7 @@ export const LoginView: React.FC = () => {
               </div>
 
               <KakaoLogin />
-              <button type="button" aria-expanded={emailExpanded} aria-controls="member-email-form" onClick={() => setEmailExpanded(!emailExpanded)} className="w-full py-3 text-xs font-semibold text-stone-600">{emailExpanded ? '이메일 로그인 접기' : '이메일로 로그인'}</button>
-              {emailExpanded && <form id="member-email-form" onSubmit={handleLogin} className="space-y-4 pt-1">
-                <div>
-                  <label
-                    htmlFor="member-email-input"
-                    className="block font-semibold text-xs text-stone-700 mb-1.5"
-                  >
-                    회원 이메일
-                  </label>
-                  <input
-                    id="member-email-input"
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="member@example.com"
-                    autoComplete="username"
-                    className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:bg-white transition-all"
-                  />
-                </div>
 
-                <div>
-                  <label
-                    htmlFor="member-password-input"
-                    className="block font-semibold text-xs text-stone-700 mb-1.5"
-                  >
-                    비밀번호
-                  </label>
-                  <input
-                    id="member-password-input"
-                    type="password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    autoComplete="current-password"
-                    className="w-full px-3.5 py-2.5 bg-stone-50 border border-stone-300 rounded-xl text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-900 focus:bg-white transition-all"
-                  />
-                </div>
-
-                {authError && (
-                  <div
-                    id="member-auth-error"
-                    className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2 text-rose-700 text-xs leading-relaxed"
-                  >
-                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                    <span>{authError}</span>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  id="btn-member-login"
-                  disabled={isSubmitting}
-                  className="w-full py-2.5 px-4 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors shadow-xs active:scale-[0.99] mt-2"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>로그인 확인 중...</span>
-                    </>
-                  ) : (
-                    <>
-                      <LogIn className="w-4 h-4" />
-                      <span>회원 로그인</span>
-                    </>
-                  )}
-                </button>
-                <button type="button" disabled={resetBusy || isSubmitting} onClick={handleResetPassword} className="w-full py-2 text-xs underline text-stone-600 disabled:opacity-50">{resetBusy ? '메일 발송 중…' : '비밀번호를 잊으셨나요?'}</button>
-                {resetMessage && <p role="status" className="text-xs text-stone-600">{resetMessage}</p>}
-              </form>}
 
               {/* Bottom Switcher: To Staff Login */}
               <div className="pt-3 border-t border-stone-200">

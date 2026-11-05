@@ -145,42 +145,9 @@ export const NewMemberModal: React.FC<NewMemberModalProps> = ({
       return;
     }
 
-    const trimmedEmail = email.trim().toLowerCase();
-    if (!trimmedEmail) {
-      setError('이메일을 입력해주세요.');
-      return;
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(trimmedEmail)) {
-      setError('올바른 이메일 형식을 입력해주세요. (예: user@example.com)');
-      return;
-    }
-
     try {
       setIsSubmitting(true);
       setError(null);
-
-      // Check duplicate email in center
-      const isDuplicate = await checkMemberEmailExists(
-        currentUser.centerId,
-        trimmedEmail,
-        isEditMode && member ? member.memberId : undefined
-      );
-      if (isDuplicate) {
-        setError('동일 센터 내에 이미 등록된 이메일입니다. 다른 이메일을 입력해주세요.');
-        setIsSubmitting(false);
-        return;
-      }
-
-      // Check duplicate against trainers in same center
-      const dupTrainer = trainers.find(
-        (t) => t.loginEmail && t.loginEmail.trim().toLowerCase() === trimmedEmail
-      );
-      if (dupTrainer) {
-        setError(`해당 이메일은 이미 트레이너(${dupTrainer.name})의 로그인 계정으로 등록되어 있습니다. 다른 이메일을 입력해주세요.`);
-        setIsSubmitting(false);
-        return;
-      }
 
       if (isEditMode && member) {
         const updatePayload: any = {
@@ -189,7 +156,6 @@ export const NewMemberModal: React.FC<NewMemberModalProps> = ({
           gender,
           birthDate,
           phone: phone.trim(),
-          email: trimmedEmail,
           startDate,
           status,
           notes: notes.trim() || undefined
@@ -205,7 +171,6 @@ export const NewMemberModal: React.FC<NewMemberModalProps> = ({
           gender,
           birthDate,
           phone: phone.trim(),
-          email: trimmedEmail,
           startDate,
           status: 'ACTIVE',
           notes: notes.trim() || undefined,
@@ -347,26 +312,6 @@ export const NewMemberModal: React.FC<NewMemberModalProps> = ({
               value={phone}
               onChange={(e) => setPhone(sanitizePhoneNumber(e.target.value))}
               placeholder="01012345678"
-              className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-lg text-sm text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent"
-            />
-          </div>
-
-          {/* Email (Required - Login Account) */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label htmlFor="new-member-email-input" className="block text-xs font-semibold text-stone-700">
-                이메일 (로그인 계정) <span className="text-rose-500">*</span>
-              </label>
-              <span className="text-[11px] text-stone-400">회원 포털 로그인용</span>
-            </div>
-            <input
-              id="new-member-email-input"
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="예: member@example.com"
-              autoComplete="email"
               className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-lg text-sm text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent"
             />
           </div>
