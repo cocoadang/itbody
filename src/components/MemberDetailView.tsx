@@ -135,7 +135,7 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
   memberId,
   onBack
 }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, currentCenterName } = useAuth();
   const [member, setMember] = useState<Member | null>(null);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [activeTab, setActiveTab] = useState<DetailTab>('pt-sessions');
@@ -663,14 +663,14 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
                   </>
                 )}
                 <span>•</span>
-                {member.uid ? (
+                {(member as any).kakaoLinked ? (
                   <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                     <KeyRound className="w-3 h-3 text-emerald-600" />
-                    <span>계정 연동됨</span>
+                    <span>카카오 연결됨</span>
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-[11px] font-medium text-stone-500 bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
-                    <span>로그인 계정 미연결</span>
+                    <span>앱 미연결 · 초대 링크를 보내주세요</span>
                   </span>
                 )}
               </div>
@@ -778,7 +778,9 @@ export const MemberDetailView: React.FC<MemberDetailViewProps> = ({
               </div>
             </div>
 
-            {currentUser?.role === 'CENTER_ADMIN' && <KakaoInvite key={member.memberId} memberId={member.memberId} />}
+            {(currentUser?.role === 'CENTER_ADMIN' || (currentUser?.role === 'TRAINER' && !!currentUser.trainerId && member.trainerId === currentUser.trainerId)) && (
+              <KakaoInvite key={member.memberId} memberId={member.memberId} memberName={member.name} centerName={currentCenterName} linked={!!(member as any).kakaoLinked} />
+            )}
             {/* Actions: Member Edit & Mobile Portal Preview */}
             <div className="w-full sm:w-auto flex flex-wrap items-center gap-2">
               {/* Phase 10A: 파일럿 기간 임시 비활성화 (향후 전용 인증 백엔드 도입 시 재활성화) */}

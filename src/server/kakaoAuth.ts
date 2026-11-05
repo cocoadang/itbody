@@ -32,6 +32,22 @@ export function kakaoFailure(res: Response, stage: string, err?: any) {
   return res.status(actualStage === 'STATE' ? 400 : 503).json({ error: `${description} (오류: ${code}, 확인번호: ${reference})`, code, reference });
 }
 
+// Center admins invite any member of their center; trainers invite the members assigned to them.
+async function requireStaff(req: Request, res: Response, next: () => void) {
+  const bearer = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
+  const admin = getFirebaseAdmin();
+  if (!bearer || !admin) return res.status(401).json({ error: '로그인이 필요합니다.' });
+  try {
+    const token = await admin.auth.verifyIdToken(bearer, true);
+    const profile = (await admin.db.doc(`users/${token.uid}`).get()).data();
+    if (!profile || !['CENTER_ADMIN', 'TRAINER'].includes(profile.role) || !safeId(profile.centerId)) return res.status(403).json({ error: '접근 권한이 없습니다.' });
+    (req as any).caller = { uid: token.uid, role: profile.role, centerId: profile.centerId, trainerId: profile.trainerId };
+    return next();
+  } catch { return res.status(401).json({ error: '인증을 확인할 수 없습니다. 다시 로그인해주세요.' }); }
+}
+
+export const INVITE_TTL_MS = 7 * 24 * 60 * 60_000;
+
 const genericError = (res: Response) => res.status(400).json({ error: '인증 또는 초대 코드 확인에 실패했습니다. 다시 시도하거나 관리자에게 문의해주세요.' });
 
 export function registerKakaoAuth(app: Express) {
@@ -53,7 +69,7 @@ export function registerKakaoAuth(app: Express) {
   app.get('/api/auth/kakao/status', (req, res) => {
     res.set('Cache-Control', 'no-store').json({ enabled: !!settings(), pending: !!cookie(req, 'pt_kakao_pending') });
   });
-  app.post('/api/admin/kakao-invite', requireCenterAdmin, async (req, res) => {
+  app.post('/api/admin/kakao-invite', requireStaff, async (req, res) => {
     try {
       const admin = getFirebaseAdmin()!;
       const caller = (req as any).caller;
@@ -62,11 +78,12 @@ export function registerKakaoAuth(app: Express) {
       if (!await consumeLimit('invite:' + caller.uid, 10)) return res.status(429).json({ error: '잠시 후 다시 시도해주세요.' });
       const code = random();
       const codeHash = hash(code);
-      const expiresAt = Date.now() + 24 * 60 * 60_000;
+      const expiresAt = Date.now() + INVITE_TTL_MS;
       await admin.db.runTransaction(async tx => {
         const ref = admin.db.doc(`members/${memberId}`);
         const member = (await tx.get(ref)).data();
         if (!member || member.centerId !== caller.centerId || member.kakaoLinked) throw new Error('Denied');
+        if (caller.role === 'TRAINER' && (!caller.trainerId || member.trainerId !== caller.trainerId)) throw new Error('Denied');
         if (member.uid) {
           const profile = (await tx.get(admin.db.doc(`users/${member.uid}`))).data();
           if (!profile || profile.role !== 'MEMBER' || profile.memberId !== memberId || profile.centerId !== caller.centerId) throw new Error('Denied');

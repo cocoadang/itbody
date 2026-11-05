@@ -44,31 +44,62 @@ export const KakaoLogin: React.FC = () => {
   </div>;
 };
 
-export const KakaoInvite: React.FC<{ memberId: string }> = ({ memberId }) => {
-  const [result, setResult] = useState<{code: string; expiresAt: number} | null>(null);
-  const [copied, setCopied] = useState(false);
+export const KakaoInvite: React.FC<{ memberId: string; memberName?: string; centerName?: string; linked?: boolean }> = ({ memberId, memberName, centerName, linked }) => {
+  const [link, setLink] = useState<{ url: string; expiresAt: number } | null>(null);
+  const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  if (linked) {
+    return <span className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-semibold border border-emerald-200">카카오 연결됨</span>;
+  }
+
+  const message = (url: string) =>
+    `${memberName ? `${memberName}님, ` : ''}${centerName || '센터'} 수업 일지 초대입니다.\n아래 링크를 열고 카카오로 로그인하면 수업 기록을 볼 수 있어요. (7일간 유효)\n${url}`;
+
   const issue = async () => {
-    setBusy(true); setResult(null); setCopied(false); setError('');
+    setBusy(true); setNotice(''); setError('');
     try {
       const token = await auth?.currentUser?.getIdToken();
       if (!token) throw new Error('다시 로그인해주세요.');
       const response = await fetch('/api/admin/kakao-invite', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ memberId }) });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || '초대 링크 발급에 실패했습니다.');
-      setResult(data);
+      if (!response.ok) throw new Error(data.error || '초대 링크를 만들지 못했습니다.');
+      setLink({ url: `${window.location.origin}/#invite=${data.code}`, expiresAt: data.expiresAt });
     } catch (err: any) { setError(err.message); }
     finally { setBusy(false); }
   };
+
+  const share = async () => {
+    if (!link) return;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'itbody 초대', text: message(link.url) });
+        setNotice('보냈습니다.');
+        return;
+      }
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return;
+    }
+    try { await navigator.clipboard.writeText(message(link.url)); setNotice('초대 문구를 복사했습니다. 카카오톡 대화방에 붙여넣어 보내주세요.'); }
+    catch { setError('복사하지 못했습니다. 아래 링크를 길게 눌러 복사해주세요.'); }
+  };
+
+  const canShare = typeof navigator !== 'undefined' && !!navigator.share;
   return <div className="w-full text-xs space-y-2">
-    <button type="button" onClick={issue} disabled={busy} className="px-3 py-2 rounded-xl bg-[#FEE500] text-[#191919] font-semibold disabled:opacity-50">{busy ? '발급 중…' : '카카오 로그인 초대 링크 발급'}</button>
-    {result && <div className="p-3 bg-yellow-50 rounded-xl space-y-2">
-      <p>아래 링크를 해당 회원 본인에게 전달해주세요. 회원은 링크를 열고 카카오로 로그인하면 됩니다. 재발급하면 이전 링크는 사용할 수 없습니다.</p>
-      <input aria-label="발급된 카카오 초대 링크" readOnly value={`${window.location.origin}/#invite=${result.code}`} className="w-full p-2 border rounded font-mono" onFocus={e => e.target.select()} />
-      <button type="button" className="px-3 py-2 bg-stone-900 text-white rounded-lg" onClick={async () => { try { await navigator.clipboard.writeText(`${window.location.origin}/#invite=${result.code}`); setCopied(true); } catch { setError('복사하지 못했습니다. 위 링크를 선택해 복사해주세요.'); } }}>{copied ? '복사 완료' : '초대 링크 복사'}</button>
-      <p>만료: {new Date(result.expiresAt).toLocaleString('ko-KR')} · 1회 사용</p>
-    </div>}
+    {!link ? (
+      <button type="button" onClick={issue} disabled={busy} className="px-4 py-2.5 rounded-xl bg-[#FEE500] text-[#191919] text-sm font-semibold disabled:opacity-50">{busy ? '만드는 중…' : '회원 초대 링크 만들기'}</button>
+    ) : (
+      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-xl space-y-2 max-w-md">
+        <p className="text-stone-700">회원이 링크를 열고 카카오로 로그인하면 바로 연결됩니다. 1회용 · {new Date(link.expiresAt).toLocaleDateString('ko-KR')}까지 유효</p>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={share} className="px-4 py-2.5 rounded-xl bg-[#FEE500] text-[#191919] text-sm font-semibold">{canShare ? '카카오톡으로 보내기' : '초대 문구 복사'}</button>
+          {canShare && <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(link.url); setNotice('링크를 복사했습니다.'); } catch { setError('복사하지 못했습니다.'); } }} className="px-3 py-2.5 rounded-xl border border-stone-300 bg-white text-sm">링크 복사</button>}
+        </div>
+        <input aria-label="초대 링크" readOnly value={link.url} className="w-full p-2 border rounded font-mono text-[11px] bg-white" onFocus={e => e.target.select()} />
+      </div>
+    )}
+    {notice && <p className="text-emerald-700">{notice}</p>}
     {error && <p role="alert" className="text-rose-700">{error}</p>}
   </div>;
 };
