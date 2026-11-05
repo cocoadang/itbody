@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { signInWithCustomToken } from 'firebase/auth';
 import { auth } from '../firebase/config';
 import { captureInvite, readInvite, setPrefetchedSession } from '../services/memberAccessService';
+import { kakaoShareAvailable, loadKakao, sendKakaoInvite } from '../services/kakaoShare';
 
 export const KakaoLogin: React.FC = () => {
   const [enabled, setEnabled] = useState(false);
@@ -49,6 +50,10 @@ export const KakaoInvite: React.FC<{ memberId: string; memberName?: string; cent
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [kakaoReady, setKakaoReady] = useState(false);
+  useEffect(() => {
+    if (!linked && kakaoShareAvailable()) loadKakao().then(() => setKakaoReady(true)).catch(() => setKakaoReady(false));
+  }, [linked]);
 
   if (linked) {
     return <span className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-semibold border border-emerald-200">카카오 연결됨</span>;
@@ -85,6 +90,13 @@ export const KakaoInvite: React.FC<{ memberId: string; memberName?: string; cent
   const share = async () => {
     if (!link) return;
     setNotice(''); setError('');
+    // KakaoTalk share (PC and phone): opens the friend/chat picker directly.
+    if (kakaoReady) {
+      try {
+        sendKakaoInvite(`${memberName ? `${memberName}님, ` : ''}${centerName || '센터'} 수업 일지 초대입니다. 링크를 열고 카카오로 로그인하면 수업 기록을 볼 수 있어요. (7일간 유효)`, link.url);
+        return;
+      } catch { /* fall back below */ }
+    }
     if (!isPhone) return copyMessage();
     try {
       await navigator.share({ title: 'itbody 초대', text: message(link.url) });
@@ -93,7 +105,7 @@ export const KakaoInvite: React.FC<{ memberId: string; memberName?: string; cent
     }
   };
 
-  const canShare = isPhone;
+  const canShare = isPhone || kakaoReady;
   return <div className="w-full text-xs space-y-2">
     {!link ? (
       <button type="button" onClick={issue} disabled={busy} className="px-4 py-2.5 rounded-xl bg-[#FEE500] text-[#191919] text-sm font-semibold disabled:opacity-50">{busy ? '만드는 중…' : '회원 초대 링크 만들기'}</button>
