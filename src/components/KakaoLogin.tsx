@@ -70,22 +70,30 @@ export const KakaoInvite: React.FC<{ memberId: string; memberName?: string; cent
     finally { setBusy(false); }
   };
 
-  const share = async () => {
+  // Phones: the share sheet lists KakaoTalk. PCs (Windows/Mac) show the OS share panel,
+  // which has no KakaoTalk, so on PC the invite text is copied for pasting into a chat.
+  const isPhone = typeof navigator !== 'undefined' && !!navigator.share &&
+    /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+
+  const copyMessage = async () => {
     if (!link) return;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: 'itbody 초대', text: message(link.url) });
-        setNotice('보냈습니다.');
-        return;
-      }
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return;
-    }
-    try { await navigator.clipboard.writeText(message(link.url)); setNotice('초대 문구를 복사했습니다. 카카오톡 대화방에 붙여넣어 보내주세요.'); }
-    catch { setError('복사하지 못했습니다. 아래 링크를 길게 눌러 복사해주세요.'); }
+    setNotice(''); setError('');
+    try { await navigator.clipboard.writeText(message(link.url)); setNotice('초대 문구를 복사했습니다. 카카오톡 대화방에 붙여넣기(Ctrl+V) 해서 보내주세요.'); }
+    catch { setError('복사하지 못했습니다. 아래 링크를 선택해 복사해주세요.'); }
   };
 
-  const canShare = typeof navigator !== 'undefined' && !!navigator.share;
+  const share = async () => {
+    if (!link) return;
+    setNotice(''); setError('');
+    if (!isPhone) return copyMessage();
+    try {
+      await navigator.share({ title: 'itbody 초대', text: message(link.url) });
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') await copyMessage();
+    }
+  };
+
+  const canShare = isPhone;
   return <div className="w-full text-xs space-y-2">
     {!link ? (
       <button type="button" onClick={issue} disabled={busy} className="px-4 py-2.5 rounded-xl bg-[#FEE500] text-[#191919] text-sm font-semibold disabled:opacity-50">{busy ? '만드는 중…' : '회원 초대 링크 만들기'}</button>
@@ -93,7 +101,7 @@ export const KakaoInvite: React.FC<{ memberId: string; memberName?: string; cent
       <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-xl space-y-2 max-w-md">
         <p className="text-stone-700">회원이 링크를 열고 카카오로 로그인하면 바로 연결됩니다. 1회용 · {new Date(link.expiresAt).toLocaleDateString('ko-KR')}까지 유효</p>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={share} className="px-4 py-2.5 rounded-xl bg-[#FEE500] text-[#191919] text-sm font-semibold">{canShare ? '카카오톡으로 보내기' : '초대 문구 복사'}</button>
+          <button type="button" onClick={share} className="px-4 py-2.5 rounded-xl bg-[#FEE500] text-[#191919] text-sm font-semibold">{canShare ? '카카오톡으로 보내기' : '카톡용 초대 문구 복사'}</button>
           {canShare && <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(link.url); setNotice('링크를 복사했습니다.'); } catch { setError('복사하지 못했습니다.'); } }} className="px-3 py-2.5 rounded-xl border border-stone-300 bg-white text-sm">링크 복사</button>}
         </div>
         <input aria-label="초대 링크" readOnly value={link.url} className="w-full p-2 border rounded font-mono text-[11px] bg-white" onFocus={e => e.target.select()} />
