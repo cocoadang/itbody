@@ -1,6 +1,6 @@
 import { redirectForOrigin } from './kakaoHosting';
 import type { Express, Request, Response, NextFunction } from 'express';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { getFirebaseAdmin, requireCenterAdmin } from './adminAccountEndpoints';
 import { consumeLimit } from './securityRateLimit';
 export const safeId = (s: unknown): s is string => typeof s === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(s);
@@ -127,6 +127,45 @@ export async function bindMember(uid: string, memberId: string, centerId: string
   });
 }
 
+const digits = (v: unknown) => String(v || '').replace(/\D/g, '');
+const todayKst = () => new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
+
+/** Creates a fresh member record from a join request (nothing existing is exposed). */
+async function createMemberFromRequest(centerId: string, name: string, phone: string, source: string) {
+  const db = getFirebaseAdmin()!.db;
+  const memberId = 'mem-' + randomBytes(6).toString('hex');
+  await db.doc(`members/${memberId}`).set({
+    memberId, centerId, trainerId: '', name, gender: 'OTHER', birthDate: '', phone, email: null, uid: null,
+    startDate: todayKst(), status: 'ACTIVE', notes: '', selfRegistered: source === 'SELF', createdAt: now(), updatedAt: now()
+  });
+  return memberId;
+}
+
+/**
+ * Self sign-up: when no member of the center has this phone number, the requester gets a new,
+ * empty member record and is linked at once. If the number already belongs to a member, the
+ * request waits for staff approval (the number is not verified, so existing records stay protected).
+ */
+async function autoRegister(uid: string, centerId: string, requestId: string, name: string, phone: string) {
+  const db = getFirebaseAdmin()!.db;
+  const members = await db.collection('members').where('centerId', '==', centerId).limit(5000).get();
+  const match = members.docs.find(d => digits(d.data().phone) === digits(phone));
+  if (match) {
+    const patch = { matchMemberId: match.id };
+    await Promise.all([db.doc(`memberJoinRequests/${requestId}`).set(patch, { merge: true }), db.doc(`centers/${centerId}/memberJoinRequests/${requestId}`).set(patch, { merge: true })]);
+    return false;
+  }
+  const memberId = await createMemberFromRequest(centerId, name, phone, 'SELF');
+  try {
+    await bindMember(uid, memberId, centerId, uid, { requestId });
+  } catch (err) {
+    await db.doc(`members/${memberId}`).delete();
+    throw err;
+  }
+  await db.collection('securityAuditLogs').add({ action: 'MEMBER_SELF_REGISTERED', uid, memberId, centerId, at: now() });
+  return true;
+}
+
 export function registerMemberAccess(app: Express) {
   app.use('/api/member', (req, res, next) => {
     res.set('Cache-Control', 'no-store');
@@ -174,13 +213,16 @@ export function registerMemberAccess(app: Express) {
         tx.set(admin.db.doc(`centers/${centerId}/memberJoinRequests/${id}`), data);
         tx.set(admin.db.collection('securityAuditLogs').doc(), { action: 'MEMBER_LINK_REQUEST', uid, centerId, at: now() });
       });
-      return res.json({ ok: true });
+      if (await autoRegister(uid, centerId, id, cleanName, cleanPhone)) {
+        return res.json({ ok: true, linked: true, customToken: await memberToken(uid, centerId) });
+      }
+      return res.json({ ok: true, linked: false });
     } catch { return fail(res); }
   });
   app.get('/api/admin/member-requests', requireCenterAdmin, async (req, res) => {
     try {
       const snap = await getFirebaseAdmin()!.db.collection(`centers/${(req as any).caller.centerId}/memberJoinRequests`).where('status', '==', 'PENDING').limit(200).get();
-      return res.set('Cache-Control', 'no-store').json({ requests: snap.docs.filter(d => d.data().status === 'PENDING').sort((a,b) => String(b.data().createdAt).localeCompare(String(a.data().createdAt))).slice(0,200).map(d => ({ id: d.id, name: d.data().name, phone: d.data().phone, createdAt: d.data().createdAt })) });
+      return res.set('Cache-Control', 'no-store').json({ requests: snap.docs.filter(d => d.data().status === 'PENDING').sort((a,b) => String(b.data().createdAt).localeCompare(String(a.data().createdAt))).slice(0,200).map(d => ({ id: d.id, name: d.data().name, phone: d.data().phone, createdAt: d.data().createdAt, matchMemberId: d.data().matchMemberId || null })) });
     } catch { return fail(res, 503); }
   });
   app.post('/api/admin/review-member-request', requireCenterAdmin, async (req, res) => {
@@ -188,11 +230,16 @@ export function registerMemberAccess(app: Express) {
       const uri = process.env.KAKAO_REDIRECT_URI;
       if (!uri || !redirectForOrigin(req.headers.origin)) return fail(res, 403);
       const caller = (req as any).caller, { id, action, memberId, confirmed } = req.body;
-      if (!safeId(id) || !['APPROVE', 'REJECT'].includes(action)) return fail(res);
+      if (!safeId(id) || !['APPROVE', 'REJECT', 'CREATE'].includes(action)) return fail(res);
       if (!await consumeLimit('review:' + caller.uid, 20)) return fail(res, 429);
       const admin = getFirebaseAdmin()!, ref = admin.db.doc(`memberJoinRequests/${id}`), request = (await ref.get()).data();
       if (!request || request.centerId !== caller.centerId || request.status !== 'PENDING') return fail(res, 403);
-      if (action === 'APPROVE') {
+      if (action === 'CREATE') {
+        // Staff registers the requester as a new member and links them in one step.
+        const newId = await createMemberFromRequest(caller.centerId, String(request.name || '회원').slice(0, 60), String(request.phone || ''), 'STAFF');
+        try { await bindMember(request.uid, newId, caller.centerId, caller.uid, { requestId: id }); }
+        catch (err) { await admin.db.doc(`members/${newId}`).delete(); throw err; }
+      } else if (action === 'APPROVE') {
         if (!safeId(memberId) || confirmed !== true) return fail(res);
         await bindMember(request.uid, memberId, caller.centerId, caller.uid, { requestId: id });
       } else {

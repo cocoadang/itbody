@@ -19,7 +19,12 @@ export const MemberAccessPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
   };
   const request = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError(''); setNotice('');
-    try { await memberApi('/api/member/request-link', { centerId, name, phone, consent }); await refreshMemberSession(); setNotice('연결 요청을 보냈습니다. 센터 관리자가 본인 확인 후 승인합니다.'); }
+    try {
+      const result = await memberApi('/api/member/request-link', { centerId, name, phone, consent });
+      if (result.linked) { await selectMemberCenter(centerId); onClose?.(); return; }
+      await refreshMemberSession();
+      setNotice('이미 센터에 등록된 번호입니다. 센터에서 본인 확인 후 연결해 드립니다.');
+    }
     catch (err: any) { setError(err.message); } finally { setBusy(false); }
   };
   return <main className="max-w-lg mx-auto p-5 space-y-5 min-h-screen bg-stone-50">
@@ -34,8 +39,8 @@ export const MemberAccessPanel: React.FC<{ onClose?: () => void }> = ({ onClose 
       {!centers.length && <p className="text-xs text-stone-500">검색되는 센터가 없다면 관리자에게 초대 링크를 요청해주세요.</p>}
       <label className="block text-sm">회원 이름<input required maxLength={60} value={name} onChange={e => setName(e.target.value)} className="w-full border p-2 rounded-lg mt-1" /></label>
       <label className="block text-sm">센터에 등록한 휴대폰 번호<input required type="tel" maxLength={20} value={phone} onChange={e => setPhone(e.target.value)} className="w-full border p-2 rounded-lg mt-1" /></label>
-      <label className="flex gap-2 text-xs text-stone-600"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} />선택한 센터에 이름과 휴대폰 번호를 전달하여 회원 확인 및 연결을 요청합니다.</label>
-      <p className="text-xs text-stone-500">휴대폰 번호는 자동 인증되지 않습니다. 센터 관리자가 기존 등록 정보와 본인을 확인합니다. 승인 전에는 회원 기록을 볼 수 없습니다.</p>
+      <label className="flex gap-2 text-xs text-stone-600"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} />선택한 센터에 이름과 휴대폰 번호를 전달하고 회원으로 가입합니다.</label>
+      <p className="text-xs text-stone-500">처음 등록하는 분은 바로 가입됩니다. 센터에 이미 등록된 번호라면 기존 기록 보호를 위해 센터 확인 후 연결됩니다.</p>
       <button disabled={busy || !consent || !centerId} className="w-full bg-stone-900 text-white p-3 rounded-lg disabled:opacity-50">{busy ? '처리 중…' : '회원 연결 요청'}</button>
     </form>
     {(error || profileError) && <p role="alert" className="text-sm text-rose-700">{error || profileError}</p>}{notice && <p role="status" className="text-sm text-emerald-700">{notice}</p>}
