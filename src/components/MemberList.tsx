@@ -14,7 +14,6 @@ import {
   Calendar,
   UserCheck,
   ChevronRight,
-  Filter,
   Edit2
 } from 'lucide-react';
 
@@ -29,7 +28,7 @@ export const MemberList: React.FC<MemberListProps> = ({
   onOpenNewMemberModal,
   initialFilter = 'ALL'
 }) => {
-  const { currentUser, currentCenterName } = useAuth();
+  const { currentUser } = useAuth();
   const [members, setMembers] = useState<Member[]>([]);
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [attentionMemberIds, setAttentionMemberIds] = useState<Set<string>>(new Set());
@@ -92,7 +91,7 @@ export const MemberList: React.FC<MemberListProps> = ({
       }
       // 2. Trainer Filter (For CENTER_ADMIN)
       if (currentUser?.role === 'CENTER_ADMIN' && selectedTrainerFilter !== 'ALL') {
-        if (member.trainerId !== selectedTrainerFilter) {
+        if (selectedTrainerFilter === '' ? trainerMap.has(member.trainerId) : member.trainerId !== selectedTrainerFilter) {
           return false;
         }
       }
@@ -105,116 +104,97 @@ export const MemberList: React.FC<MemberListProps> = ({
       }
       return true;
     });
-  }, [members, statusFilter, attentionMemberIds, selectedTrainerFilter, searchQuery, currentUser?.role]);
+  }, [members, statusFilter, attentionMemberIds, selectedTrainerFilter, searchQuery, currentUser?.role, trainerMap]);
 
   return (
     <div id="member-list-view" className="space-y-6">
       {currentUser?.role === 'CENTER_ADMIN' && <MemberJoinRequests members={members} onApproved={fetchMembersData} />}
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 pb-2 border-b border-stone-200">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-bold text-stone-900 tracking-tight">
-              회원 목록
-            </h1>
-            <span className="px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-700 text-xs font-semibold">
-              총 {filteredMembers.length}명
-            </span>
-          </div>
-          <p className="text-xs sm:text-sm text-stone-500 mt-1">
-            {currentCenterName} 소속 회원의 PT 시작일, 상태, 담당 트레이너 정보를 관리합니다.
-            {currentUser?.role === 'TRAINER' && (
-              <span className="text-blue-700 font-medium ml-1 block sm:inline">
-                (본인 담당 회원 전용 뷰)
-              </span>
-            )}
-          </p>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-stone-900 tracking-tight">
+            {currentUser?.role === 'TRAINER' ? '내 회원' : '회원'}
+          </h1>
+          <span className="text-sm font-semibold text-stone-500">{filteredMembers.length}명</span>
         </div>
-
         <div className="flex items-center gap-2 shrink-0">
           <button
             id="refresh-members-btn"
             onClick={fetchMembersData}
             disabled={loading}
-            className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3 py-2 bg-white border border-stone-200 rounded-lg text-xs font-medium text-stone-700 hover:bg-stone-50 transition-colors cursor-pointer active:scale-95"
+            aria-label="새로고침"
+            title="새로고침"
+            className="p-2 bg-white border border-stone-200 rounded-lg text-stone-600 hover:bg-stone-50 cursor-pointer active:scale-95"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            새로고침
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           <button
             id="open-register-member-btn"
             onClick={onOpenNewMemberModal}
-            className="flex-1 sm:flex-none justify-center flex items-center gap-1.5 px-3.5 py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer active:scale-95 whitespace-nowrap"
+            title="카카오 가입이 어려운 회원을 직접 등록합니다"
+            className="flex items-center gap-1 px-3 py-2 bg-white border border-stone-300 text-stone-800 hover:bg-stone-50 rounded-lg text-xs font-semibold cursor-pointer active:scale-95 whitespace-nowrap"
           >
             <UserPlus className="w-3.5 h-3.5" />
-            신규 회원 등록
+            직접 등록
           </button>
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-3 sm:p-4 rounded-xl border border-stone-200 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 sm:gap-4">
-        {/* Search */}
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            id="search-members-input"
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="회원 이름 또는 연락처 검색..."
-            className="w-full pl-9 pr-4 py-2 bg-stone-50 border border-stone-200 rounded-lg text-sm text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent placeholder:text-stone-400"
-          />
-        </div>
-
-        {/* Status Filter Tabs & Trainer selector */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center bg-stone-100 p-1 rounded-lg w-full sm:w-auto justify-between sm:justify-start">
-            {(['ALL', 'ACTIVE', 'ATTENTION', 'PAUSED', 'ENDED'] as const).map((st) => (
-              <button
-                key={st}
-                id={`filter-status-${st.toLowerCase()}`}
-                onClick={() => setStatusFilter(st)}
-                className={`flex-1 sm:flex-none px-2.5 sm:px-3 py-1 rounded-md text-xs font-medium transition-colors cursor-pointer text-center ${
-                  statusFilter === st
-                    ? st === 'ATTENTION'
-                      ? 'bg-amber-100 text-amber-900 font-bold shadow-xs'
-                      : 'bg-white text-stone-900 font-bold shadow-xs'
-                    : 'text-stone-600 hover:text-stone-900'
-                }`}
-              >
-                {st === 'ALL'
-                  ? '전체'
-                  : st === 'ACTIVE'
-                  ? '활성'
-                  : st === 'ATTENTION'
-                  ? `관리 필요${attentionMemberIds.size > 0 ? ` (${attentionMemberIds.size})` : ''}`
-                  : st === 'PAUSED'
-                  ? '일시정지'
-                  : '종료'}
-              </button>
-            ))}
+      {/* Search + filters */}
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              id="search-members-input"
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="이름 또는 연락처"
+              className="w-full pl-9 pr-3 py-2.5 bg-white border border-stone-200 rounded-xl text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-900 placeholder:text-stone-400"
+            />
           </div>
-
-          {/* Trainer Filter (CENTER_ADMIN only) */}
           {currentUser?.role === 'CENTER_ADMIN' && trainers.length > 0 && (
-            <div className="flex items-center gap-1.5 w-full sm:w-auto sm:pl-2 sm:border-l sm:border-stone-200">
-              <Filter className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-              <select
-                id="filter-trainer-select"
-                value={selectedTrainerFilter}
-                onChange={(e) => setSelectedTrainerFilter(e.target.value)}
-                className="w-full sm:w-auto px-2.5 py-1.5 bg-stone-50 border border-stone-200 rounded-lg text-xs text-stone-700 focus:outline-none focus:ring-2 focus:ring-stone-900 cursor-pointer"
-              >
-                <option value="ALL">전체 트레이너</option>
-                {trainers.map((t) => (
-                  <option key={t.trainerId} value={t.trainerId}>
-                    {t.name} 트레이너
-                  </option>
-                ))}
-              </select>
-            </div>
+            <select
+              id="filter-trainer-select"
+              aria-label="담당 트레이너"
+              value={selectedTrainerFilter}
+              onChange={(e) => setSelectedTrainerFilter(e.target.value)}
+              className="w-28 sm:w-40 shrink-0 px-2 py-2.5 bg-white border border-stone-200 rounded-xl text-sm text-stone-700 focus:outline-none focus:ring-2 focus:ring-stone-900 cursor-pointer"
+            >
+              <option value="ALL">트레이너 전체</option>
+              <option value="">미지정</option>
+              {trainers.map((t) => (
+                <option key={t.trainerId} value={t.trainerId}>{t.name}</option>
+              ))}
+            </select>
           )}
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-0.5 [scrollbar-width:none]">
+          {(['ALL', 'ACTIVE', 'ATTENTION', 'PAUSED', 'ENDED'] as const).map((st) => (
+            <button
+              key={st}
+              id={`filter-status-${st.toLowerCase()}`}
+              onClick={() => setStatusFilter(st)}
+              className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
+                statusFilter === st
+                  ? st === 'ATTENTION'
+                    ? 'bg-amber-500 border-amber-500 text-white'
+                    : 'bg-stone-900 border-stone-900 text-white'
+                  : 'bg-white border-stone-200 text-stone-600'
+              }`}
+            >
+              {st === 'ALL'
+                ? '전체'
+                : st === 'ACTIVE'
+                ? '활성'
+                : st === 'ATTENTION'
+                ? `관리 필요${attentionMemberIds.size > 0 ? ` ${attentionMemberIds.size}` : ''}`
+                : st === 'PAUSED'
+                ? '일시정지'
+                : '종료'}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -240,8 +220,8 @@ export const MemberList: React.FC<MemberListProps> = ({
           id="empty-member-list-center"
           icon={Users}
           title="등록된 회원이 없습니다"
-          description="현재 센터에 등록된 회원 데이터가 없습니다. 신규 회원을 등록하거나 상단의 'Firestore 데이터 생성' 버튼을 눌러 샘플 회원 데이터를 생성할 수 있습니다."
-          actionText="신규 회원 등록"
+          description="회원이 카카오로 가입하면 여기에 자동으로 표시됩니다. 카카오 가입이 어려운 회원은 직접 등록할 수 있습니다."
+          actionText="직접 등록"
           onAction={onOpenNewMemberModal}
         />
       ) : filteredMembers.length === 0 ? (
@@ -262,87 +242,50 @@ export const MemberList: React.FC<MemberListProps> = ({
         /* Members List Container */
         <div>
           {/* Mobile Card View (visible on small screens < md) */}
-          <div className="md:hidden space-y-3">
+          <div className="md:hidden bg-white rounded-xl border border-stone-200 divide-y divide-stone-100 overflow-hidden">
             {filteredMembers.map((member) => {
-              const trainerName = trainerMap.get(member.trainerId) || '미지정';
+              const trainerName = trainerMap.get(member.trainerId);
+              const attention = attentionMemberIds.has(member.memberId);
               return (
                 <div
                   key={member.memberId}
                   id={`member-card-${member.memberId}`}
                   onClick={() => onSelectMember(member.memberId)}
-                  className="bg-white rounded-xl border border-stone-200 p-4 shadow-xs hover:border-stone-400 transition-all cursor-pointer active:scale-[0.99]"
+                  className="flex items-center gap-3 px-3 py-3 active:bg-stone-50 cursor-pointer"
                 >
-                  <div className="flex items-start justify-between gap-2 mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-stone-900 text-white font-bold text-sm flex items-center justify-center shrink-0">
-                        {member.name.slice(0, 1)}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-stone-900 text-base">
-                            {member.name}
-                          </span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-600 font-medium">
-                            {member.gender === 'MALE' ? '남' : member.gender === 'FEMALE' ? '여' : '기타'}
-                          </span>
-                        </div>
-                        <span className="text-xs text-stone-400 font-mono">
-                          {member.memberId}
+                  <div className={`w-10 h-10 rounded-full font-bold text-sm flex items-center justify-center shrink-0 ${member.status === 'ACTIVE' ? 'bg-stone-900 text-white' : 'bg-stone-200 text-stone-500'}`}>
+                    {member.name.slice(0, 1)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-stone-900 truncate">{member.name}</span>
+                      {member.status !== 'ACTIVE' && (
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${member.status === 'PAUSED' ? 'bg-amber-50 text-amber-700' : 'bg-stone-100 text-stone-500'}`}>
+                          {member.status === 'PAUSED' ? '일시정지' : '종료'}
                         </span>
-                      </div>
+                      )}
+                      {attention && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-semibold">관리 필요</span>}
                     </div>
-
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
-                        member.status === 'ACTIVE'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : member.status === 'PAUSED'
-                          ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                          : 'bg-stone-100 text-stone-600 border border-stone-200'
-                      }`}
-                    >
-                      {member.status === 'ACTIVE'
-                        ? '활성'
-                        : member.status === 'PAUSED'
-                        ? '일시정지'
-                        : '종료'}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 pt-2 border-t border-stone-100 text-xs text-stone-600">
-                    <div className="flex items-center gap-1.5 truncate">
-                      <Phone className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                      <span className="font-mono truncate">{member.phone}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 truncate">
-                      <UserCheck className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                      <span className="truncate font-medium text-stone-800">{trainerName}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 truncate text-[11px] text-stone-500">
-                      <Calendar className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                      <span>시작: {member.startDate}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-1 text-[11px] font-semibold text-stone-900 col-span-2 pt-1 border-t border-stone-50">
-                      <button
-                        type="button"
-                        id={`edit-member-btn-mobile-${member.memberId}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingMember(member);
-                          setIsEditModalOpen(true);
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs text-stone-700 bg-stone-100 hover:bg-stone-200 rounded-lg transition-colors"
-                      >
-                        <Edit2 className="w-3 h-3 text-stone-600" />
-                        <span>수정</span>
-                      </button>
-
-                      <div className="flex items-center gap-1 text-stone-900">
-                        <span>여정 상세</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </div>
+                    <div className="text-xs text-stone-500 truncate mt-0.5">
+                      {member.phone}
+                      {' · '}
+                      {trainerName ? <span className="text-stone-700">{trainerName}</span> : <span className="text-rose-600 font-semibold">트레이너 미지정</span>}
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    id={`edit-member-btn-mobile-${member.memberId}`}
+                    aria-label={`${member.name} 정보 수정`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingMember(member);
+                      setIsEditModalOpen(true);
+                    }}
+                    className="p-2 -mr-1 text-stone-400 hover:text-stone-800 rounded-lg"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <ChevronRight className="w-4 h-4 text-stone-300 shrink-0" />
                 </div>
               );
             })}
@@ -366,7 +309,7 @@ export const MemberList: React.FC<MemberListProps> = ({
                 </thead>
                 <tbody className="divide-y divide-stone-100 text-sm">
                   {filteredMembers.map((member) => {
-                    const trainerName = trainerMap.get(member.trainerId) || '미지정';
+                    const trainerName = trainerMap.get(member.trainerId);
                     return (
                       <tr
                         key={member.memberId}
@@ -384,9 +327,6 @@ export const MemberList: React.FC<MemberListProps> = ({
                               <span className="font-semibold text-stone-900 group-hover:text-stone-950 block">
                                 {member.name}
                               </span>
-                              <span className="text-[11px] text-stone-400 font-mono">
-                                {member.memberId}
-                              </span>
                             </div>
                           </div>
                         </td>
@@ -394,7 +334,7 @@ export const MemberList: React.FC<MemberListProps> = ({
                         {/* Gender & BirthDate */}
                         <td className="py-3.5 px-4 text-stone-600 text-xs">
                           <span className="inline-block px-1.5 py-0.5 rounded bg-stone-100 text-stone-700 font-medium mr-1.5">
-                            {member.gender === 'MALE' ? '남성' : member.gender === 'FEMALE' ? '여성' : '기타'}
+                            {member.gender === 'MALE' ? '남성' : member.gender === 'FEMALE' ? '여성' : '-'}
                           </span>
                           {member.birthDate}
                         </td>
@@ -411,7 +351,7 @@ export const MemberList: React.FC<MemberListProps> = ({
                         <td className="py-3.5 px-4 text-stone-700 text-xs font-medium">
                           <span className="flex items-center gap-1">
                             <UserCheck className="w-3 h-3 text-stone-400" />
-                            {trainerName}
+                            {trainerName || <span className="text-rose-600 font-semibold">미지정</span>}
                           </span>
                         </td>
 
@@ -435,10 +375,10 @@ export const MemberList: React.FC<MemberListProps> = ({
                             }`}
                           >
                             {member.status === 'ACTIVE'
-                              ? '활성 (ACTIVE)'
+                              ? '활성'
                               : member.status === 'PAUSED'
-                              ? '일시정지 (PAUSED)'
-                              : '종료 (ENDED)'}
+                              ? '일시정지'
+                              : '종료'}
                           </span>
                         </td>
 
