@@ -1576,9 +1576,9 @@ export async function createPtSession(
     }
   }
 
-  const internalNote = data.internalNote !== undefined ? data.internalNote : data.sessionNotes;
+  const internalNote = data.internalNote ?? data.sessionNotes ?? '';
   const sessionNotes = internalNote;
-  const memberFeedback = data.memberFeedback !== undefined ? data.memberFeedback : data.trainerFeedback;
+  const memberFeedback = data.memberFeedback ?? data.trainerFeedback ?? '';
   const trainerFeedback = memberFeedback;
 
   const newSession: PtSession = {

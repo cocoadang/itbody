@@ -1,5 +1,5 @@
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app';
-import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, type Firestore } from 'firebase/firestore';
 import { getAuth, type Auth } from 'firebase/auth';
 import { getStorage, type FirebaseStorage } from 'firebase/storage';
 import { getFunctions, type Functions } from 'firebase/functions';
@@ -45,7 +45,13 @@ if (!isDevSandbox) try {
     ? firebaseConfig.firestoreDatabaseId
     : '(default)';
 
-  db = getFirestore(app, databaseId);
+  // Optional fields left blank (e.g. an internal note) arrive as undefined; Firestore rejects
+  // those by default, which made new journal entries fail to save. Skip them instead.
+  try {
+    db = initializeFirestore(app, { ignoreUndefinedProperties: true }, databaseId);
+  } catch {
+    db = getFirestore(app, databaseId);
+  }
   try {
     defaultDb = getFirestore(app, '(default)');
   } catch {
