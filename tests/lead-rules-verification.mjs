@@ -28,7 +28,12 @@ try {
   await assertSucceeds(assign(u1, { ...base, leadId: 'delegated', assignedTrainerId: 't2', assignedTrainerName: '트레이너 2' }, 'u1', null));
   await assertFails(getDoc(doc(outsider, 'leads', 'lead1')));
   await assertFails(getDoc(doc(member, 'leads', 'lead1')));
+  await assertFails(getDoc(doc(ctx('pending-signup'), 'leads', 'lead1')));
+  await assertFails(getDoc(doc(ctx('pending-signup'), 'trainers', 't1')));
   await assertFails(getDocs(collection(anon, 'leads')));
+  await assertFails(setDoc(doc(u1, 'trainerJoinRequests', 'u1'), { status: 'APPROVED', centerId: 'c1' }));
+  await assertFails(setDoc(doc(u1, 'users', 'u1'), { role: 'CENTER_ADMIN', centerId: 'c1' }));
+  await assertFails(getDocs(collection(u1, 'trainerJoinRequests')));
   await assertFails(assign(member, { ...base, leadId: 'member-create' }, 'member', null));
   await assertFails(assign(outsider, { ...base, leadId: 'cross-create' }, 'out', null));
   await assertFails(assign(u1, { ...base, leadId: 'bad-target', assignedTrainerId: 't3', assignedTrainerName: '다른 센터' }, 'u1', null));
@@ -62,3 +67,4 @@ try {
   await assertSucceeds(deleteDoc(doc(admin, 'leads', 'delegated')));
   console.log('Firestore emulator: OT access, tenant, schema, audit and legacy scenarios passed.');
 } finally { await env.cleanup(); }
+

@@ -1,3 +1,4 @@
+import { TrainerJoinRequests } from './TrainerJoinRequests';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { getTrainers, createTrainer, updateTrainer, getMembers } from '../services/dataService';
@@ -304,6 +305,8 @@ export const TrainerList: React.FC = () => {
           )}
         </div>
       </div>
+
+      {currentUser?.role === 'CENTER_ADMIN' && <TrainerJoinRequests onApproved={fetchTrainers} />}
 
       {/* Account Action Notification Banner */}
       {accountActionError && (
@@ -689,3 +692,4 @@ export const TrainerList: React.FC = () => {
     </div>
   );
 };
+

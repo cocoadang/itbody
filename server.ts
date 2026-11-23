@@ -1,3 +1,4 @@
+import { registerTrainerRegistration } from './src/server/trainerRegistration';
 import { generateWithModelFallback, AiGenerationTimeout } from './src/server/aiGeneration';
 import express from 'express';
 import path from 'path';
@@ -28,6 +29,7 @@ app.use(express.json({ limit: '48kb' }));
 registerKakaoAuth(app);
 registerMemberAccess(app);
 registerJournal(app);
+registerTrainerRegistration(app);
 
 // Register Phase 10A Admin Account Provisioning Endpoints (Separated from execution path; migrated to Phase 10B Firebase Functions)
 // registerAdminAccountEndpoints(app);
@@ -291,3 +293,4 @@ async function setupServer() {
 }
 
 setupServer();
+

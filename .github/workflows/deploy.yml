@@ -41,6 +41,7 @@ jobs:
       - run: npx --yes firebase-tools@14 emulators:exec --only firestore --project demo-itbody-ot --config firebase.emulator.json "node tests/lead-rules-verification.mjs"
       - run: node tests/kakao-hosting-routes.mjs
       - run: node tests/ai-timeout-routes.mjs
+      - run: node tests/trainer-registration-routes.mjs
       - run: npm run build
 
   deploy:
@@ -197,4 +198,5 @@ jobs:
             curl -sf "$host/" | grep -q '<div id="root">'
             echo "$host OK"
           done
+
 

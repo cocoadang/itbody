@@ -1,3 +1,4 @@
+import { TrainerSignup } from './components/TrainerSignup';
 import { MemberAccessPanel } from './components/MemberAccessPanel';
 import React, { Suspense, lazy, useState } from 'react';
 import { isDevSandbox } from './firebase/config';
@@ -313,9 +314,11 @@ function AuthenticatedApp() {
 }
 
 export default function App() {
+  if (window.location.pathname === '/trainer-signup') return <TrainerSignup />;
   return (
     <AuthProvider>
       <AuthenticatedApp />
     </AuthProvider>
   );
 }
+

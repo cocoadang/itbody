@@ -70,6 +70,10 @@ service cloud.firestore {
         !request.resource.data.keys().hasAny(['kakaoLinked', 'activeInviteHash', 'portalUid']);
     }
 
+    match /trainerJoinRequests/{uid} {
+      allow read, write: if false;
+    }
+
     // User profiles (Single source of truth for identity, role, and tenant)
     match /users/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || (hasUserDoc() && isCenterAdmin(resource.data.centerId)));
@@ -508,4 +512,5 @@ service cloud.firestore {
     }
   }
 }
+
 
