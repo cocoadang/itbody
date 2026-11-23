@@ -37,6 +37,8 @@ jobs:
       - run: node --import tsx tests/kakao-hosting-verification.ts
       - run: node --import tsx tests/ai-generation-verification.ts
       - run: node --import tsx tests/journal-verification.ts
+      - run: node --import tsx tests/lead-staff-verification.ts
+      - run: npx --yes firebase-tools@14 emulators:exec --only firestore --project demo-itbody-ot --config firebase.emulator.json "node tests/lead-rules-verification.mjs"
       - run: node tests/kakao-hosting-routes.mjs
       - run: node tests/ai-timeout-routes.mjs
       - run: npm run build
@@ -195,3 +197,4 @@ jobs:
             curl -sf "$host/" | grep -q '<div id="root">'
             echo "$host OK"
           done
+

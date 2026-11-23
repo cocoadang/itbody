@@ -651,6 +651,18 @@ export interface Lead {
   // 등록 시
   convertedMemberId?: string | null;
   registeredAt?: string | null;
+  assignmentVersion?: number;
+}
+
+export interface LeadAssignment {
+  centerId: string;
+  leadId: string;
+  version: number;
+  previousTrainerId: string | null;
+  assignedTrainerId: string | null;
+  assignedTrainerName: string | null;
+  changedByUid: string;
+  changedAt: string;
 }
 
 // ==========================================
@@ -711,6 +723,7 @@ export interface RenewalCandidate {
   expirationDate: string;
   existingRenewal?: Renewal | null;
 }
+
 
 
 
