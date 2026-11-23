@@ -30,6 +30,7 @@
     "compression": "^1.8.1"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -42,3 +43,4 @@
     "@types/compression": "^1.8.1"
   }
 }
+

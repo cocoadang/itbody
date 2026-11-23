@@ -1,0 +1,70 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { initializeTestEnvironment, assertSucceeds, assertFails } from '@firebase/rules-unit-testing';
+import { doc, setDoc, getDoc, getDocs, collection, query, where, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+
+const env = await initializeTestEnvironment({ projectId: 'demo-itbody-ot', firestore: { host: '127.0.0.1', port: 8085, rules: readFileSync('firestore.rules', 'utf8') } });
+const now = '2026-11-23T08:00:00.000Z';
+const base = { leadId: 'lead1', centerId: 'c1', name: '가상 회원', phone: '01012345678', inquiryDate: '2026-11-23', source: '방문', status: 'NEW', createdAt: now, updatedAt: now, assignedTrainerId: 't1', assignedTrainerName: '트레이너 1', assignmentVersion: 1 };
+const ctx = (uid) => env.authenticatedContext(uid).firestore();
+const event = (lead, uid, previousTrainerId) => ({ centerId: lead.centerId, leadId: lead.leadId, version: lead.assignmentVersion, previousTrainerId, assignedTrainerId: lead.assignedTrainerId, assignedTrainerName: lead.assignedTrainerName, changedByUid: uid, changedAt: lead.updatedAt });
+const assign = (db, lead, uid, previousTrainerId, extraEvent = {}) => {
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'leads', lead.leadId), lead);
+  batch.set(doc(db, 'leads', lead.leadId, 'assignments', String(lead.assignmentVersion)), { ...event(lead, uid, previousTrainerId), ...extraEvent });
+  return batch.commit();
+};
+try {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    for (const [uid, role, centerId, trainerId] of [['a', 'CENTER_ADMIN', 'c1', null], ['u1', 'TRAINER', 'c1', 't1'], ['u2', 'TRAINER', 'c1', 't2'], ['out', 'TRAINER', 'c2', 't3'], ['member', 'MEMBER', 'c1', null]]) await setDoc(doc(db, 'users', uid), { role, centerId, trainerId });
+    for (const [id, centerId, name, status] of [['t1', 'c1', '트레이너 1', 'ACTIVE'], ['t2', 'c1', '트레이너 2', 'ACTIVE'], ['t3', 'c2', '다른 센터', 'ACTIVE'], ['inactive', 'c1', '퇴사', 'INACTIVE']]) await setDoc(doc(db, 'trainers', id), { centerId, name, status });
+    const legacy = { ...base, leadId: 'legacy' }; delete legacy.assignmentVersion;
+    await setDoc(doc(db, 'leads', 'legacy'), legacy);
+  });
+  const u1 = ctx('u1'), u2 = ctx('u2'), admin = ctx('a'), outsider = ctx('out'), member = ctx('member'), anon = env.unauthenticatedContext().firestore();
+  await assertSucceeds(assign(u1, base, 'u1', null));
+  await assertSucceeds(getDocs(query(collection(u2, 'leads'), where('centerId', '==', 'c1'))));
+  await assertSucceeds(assign(u1, { ...base, leadId: 'delegated', assignedTrainerId: 't2', assignedTrainerName: '트레이너 2' }, 'u1', null));
+  await assertFails(getDoc(doc(outsider, 'leads', 'lead1')));
+  await assertFails(getDoc(doc(member, 'leads', 'lead1')));
+  await assertFails(getDoc(doc(ctx('pending-signup'), 'leads', 'lead1')));
+  await assertFails(getDoc(doc(ctx('pending-signup'), 'trainers', 't1')));
+  await assertFails(getDocs(collection(anon, 'leads')));
+  await assertFails(setDoc(doc(u1, 'trainerJoinRequests', 'u1'), { status: 'APPROVED', centerId: 'c1' }));
+  await assertFails(setDoc(doc(u1, 'users', 'u1'), { role: 'CENTER_ADMIN', centerId: 'c1' }));
+  await assertFails(getDocs(collection(u1, 'trainerJoinRequests')));
+  await assertFails(assign(member, { ...base, leadId: 'member-create' }, 'member', null));
+  await assertFails(assign(outsider, { ...base, leadId: 'cross-create' }, 'out', null));
+  await assertFails(assign(u1, { ...base, leadId: 'bad-target', assignedTrainerId: 't3', assignedTrainerName: '다른 센터' }, 'u1', null));
+  await assertFails(assign(u1, { ...base, leadId: 'inactive-target', assignedTrainerId: 'inactive', assignedTrainerName: '퇴사' }, 'u1', null));
+  await assertFails(assign(u1, { ...base, leadId: 'spoofed-name', assignedTrainerName: '가짜 이름' }, 'u1', null));
+  await assertFails(assign(u1, { ...base, leadId: 'spoofed-actor' }, 'u1', null, { changedByUid: 'u2' }));
+  await assertFails(assign(u1, { ...base, leadId: 'bad-schema', extra: 'x' }, 'u1', null));
+  await assertFails(assign(u1, { ...base, leadId: 'oversized', memo: 'x'.repeat(5001) }, 'u1', null));
+  await assertFails(updateDoc(doc(u2, 'leads', 'lead1'), { memo: '다른 담당 기록' }));
+  await assertFails(updateDoc(doc(u2, 'leads', 'lead1'), { status: 'OT_COMPLETED' }));
+  await assertFails(updateDoc(doc(u1, 'leads', 'lead1'), { name: '권한 밖' }));
+  await assertFails(updateDoc(doc(u1, 'leads', 'lead1'), { centerId: 'c2' }));
+  await assertFails(updateDoc(doc(u1, 'leads', 'lead1'), { createdAt: '변경' }));
+  await assertFails(updateDoc(doc(u1, 'leads', 'lead1'), { phone: 42 }));
+  await assertFails(updateDoc(doc(u1, 'leads', 'lead1'), { memo: 'x'.repeat(5001) }));
+  await assertFails(updateDoc(doc(u1, 'leads', 'lead1'), { assignedTrainerId: 't2', assignedTrainerName: '트레이너 2', assignmentVersion: 2 }));
+  const reassigned = { ...base, assignedTrainerId: 't2', assignedTrainerName: '트레이너 2', assignmentVersion: 2, status: 'OT_SCHEDULED', otDate: '2026-11-24' };
+  await assertFails(assign(u2, { ...reassigned, status: 'OT_COMPLETED' }, 'u2', 't1'));
+  await assertSucceeds(assign(u2, reassigned, 'u2', 't1'));
+  await assertFails(updateDoc(doc(u1, 'leads', 'lead1'), { status: 'OT_COMPLETED' }));
+  await assertSucceeds(updateDoc(doc(u2, 'leads', 'lead1'), { status: 'OT_COMPLETED', memo: '정상 완료' }));
+  await assertSucceeds(updateDoc(doc(admin, 'leads', 'lead1'), { phone: '01087654321' }));
+  await assertFails(updateDoc(doc(u2, 'leads', 'lead1', 'assignments', '2'), { changedByUid: 'u1' }));
+  await assertFails(deleteDoc(doc(admin, 'leads', 'lead1', 'assignments', '2')));
+  await assertFails(setDoc(doc(u2, 'leads', 'lead1', 'assignments', '3'), { ...event({ ...reassigned, assignmentVersion: 3 }, 'u2', 't2') }));
+  await assertFails(assign(u2, { ...reassigned, assignmentVersion: 4, assignedTrainerId: 't1', assignedTrainerName: '트레이너 1' }, 'u2', 't2'));
+  const legacy = { ...reassigned, leadId: 'legacy', assignmentVersion: 1 };
+  await assertSucceeds(assign(u2, legacy, 'u2', 't1'));
+  await assertFails(deleteDoc(doc(u2, 'leads', 'lead1')));
+  assert.equal((await getDocs(collection(u2, 'leads', 'lead1', 'assignments'))).size, 2);
+  await assertSucceeds(deleteDoc(doc(admin, 'leads', 'delegated')));
+  console.log('Firestore emulator: OT access, tenant, schema, audit and legacy scenarios passed.');
+} finally { await env.cleanup(); }
+

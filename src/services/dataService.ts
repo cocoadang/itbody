@@ -1,3 +1,5 @@
+import { assertLeadStaff, assertLeadUpdate } from '../utils/leadPermissions';
+import type { LeadAssignment } from '../types';
 import {
   collection,
   doc,
@@ -4495,39 +4497,62 @@ export async function clearCenterData(centerId: string): Promise<void> {
 // PHASE 8A: LEAD & OT MANAGEMENT SERVICE (신규문의 및 OT 관리)
 // ==========================================
 
+// Assignment changes are committed together with an append-only audit event.
+const localLeadAssignments = new Map<string, LeadAssignment[]>();
+const cleanLeadData = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+async function resolveLeadTrainer(centerId: string, trainerId: string | null, read: (ref: any) => Promise<any> = getDoc) {
+  if (!trainerId) return null;
+  const trainer = isFirestoreAvailable && db
+    ? (await read(doc(db, 'trainers', trainerId))).data() as Trainer | undefined
+    : memoryStore.trainers[trainerId];
+  if (!trainer || trainer.centerId !== centerId || trainer.status !== 'ACTIVE') {
+    throw new Error('같은 센터의 재직 중인 트레이너를 선택해주세요.');
+  }
+  return trainer;
+}
+function leadActorUid(userRole?: UserRole, trainerId?: string | null) {
+  if (isFirestoreAvailable && !auth?.currentUser) throw new Error('다시 로그인해주세요.');
+  return auth?.currentUser?.uid || `local-${userRole}-${trainerId || 'admin'}`;
+}
+function assignmentEvent(lead: Lead, previousTrainerId: string | null, uid: string): LeadAssignment {
+  return {
+    centerId: lead.centerId, leadId: lead.leadId, version: lead.assignmentVersion!,
+    previousTrainerId, assignedTrainerId: lead.assignedTrainerId || null,
+    assignedTrainerName: lead.assignedTrainerName || null, changedByUid: uid, changedAt: lead.updatedAt
+  };
+}
+export async function getLeadAssignments(centerId: string, leadId: string): Promise<LeadAssignment[]> {
+  const events = isFirestoreAvailable && db
+    ? (await getDocs(collection(db, 'leads', leadId, 'assignments'))).docs.map((d) => d.data() as LeadAssignment)
+    : localLeadAssignments.get(leadId) || [];
+  return events.filter((e) => e.centerId === centerId).sort((a, b) => b.version - a.version);
+}
 export async function createLead(
   leadData: Omit<Lead, 'leadId' | 'createdAt' | 'updatedAt'> & { leadId?: string },
   userRole?: UserRole,
   currentTrainerId?: string | null
 ): Promise<Lead> {
-  if (userRole === 'MEMBER') {
-    throw new Error('회원은 신규문의를 등록할 수 없습니다.');
-  }
-  if (userRole === 'TRAINER') {
-    throw new Error('신규문의 등록은 센터 관리자만 가능합니다.');
-  }
-
+  assertLeadStaff(userRole, currentTrainerId);
+  const trainerId = leadData.assignedTrainerId === undefined && userRole === 'TRAINER'
+    ? currentTrainerId! : leadData.assignedTrainerId || null;
+  const trainer = await resolveLeadTrainer(leadData.centerId, trainerId);
+  const uid = leadActorUid(userRole, currentTrainerId);
   const leadId = leadData.leadId || 'lead-' + Math.random().toString(36).substring(2, 9);
   const now = new Date().toISOString();
-
-  const newLead: Lead = {
-    ...leadData,
-    leadId,
-    createdAt: now,
-    updatedAt: now
-  };
-
-  memoryStore.leads[leadId] = newLead;
-  saveLocalStore(memoryStore);
-
+  const newLead: Lead = cleanLeadData({
+    ...leadData, leadId, assignedTrainerId: trainerId, assignedTrainerName: trainer?.name || null,
+    assignmentVersion: 1, createdAt: now, updatedAt: now
+  });
+  const event = assignmentEvent(newLead, null, uid);
   if (isFirestoreAvailable && db) {
-    try {
-      await setDoc(doc(db, 'leads', leadId), newLead);
-    } catch (err) {
-      firestoreWriteFailed('createLead', err);
-    }
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'leads', leadId), newLead);
+    batch.set(doc(db, 'leads', leadId, 'assignments', '1'), event);
+    await batch.commit();
   }
-
+  memoryStore.leads[leadId] = newLead;
+  localLeadAssignments.set(leadId, [event]);
+  saveLocalStore(memoryStore);
   return newLead;
 }
 
@@ -4543,19 +4568,7 @@ export async function getLeads(
 
   if (isFirestoreAvailable && db) {
     try {
-      let q;
-      if (userRole === 'TRAINER') {
-        q = query(
-          collection(db, 'leads'),
-          where('centerId', '==', centerId),
-          where('assignedTrainerId', '==', currentTrainerId || '__unassigned__')
-        );
-      } else {
-        q = query(
-          collection(db, 'leads'),
-          where('centerId', '==', centerId)
-        );
-      }
+      const q = query(collection(db, 'leads'), where('centerId', '==', centerId));
       const snap = await getDocs(q);
       snap.docs.forEach((d) => {
         const item = d.data() as Lead;
@@ -4569,9 +4582,6 @@ export async function getLeads(
 
   const list = Object.values(memoryStore.leads || {}).filter((lead) => {
     if (lead.centerId !== centerId) return false;
-    if (userRole === 'TRAINER') {
-      return currentTrainerId ? lead.assignedTrainerId === currentTrainerId : false;
-    }
     return true;
   });
 
@@ -4597,9 +4607,6 @@ export async function getLeadById(
       if (snap.exists()) {
         const item = snap.data() as Lead;
         if (item.centerId === centerId) {
-          if (userRole === 'TRAINER' && currentTrainerId && item.assignedTrainerId !== currentTrainerId) {
-            return null;
-          }
           memoryStore.leads[leadId] = item;
           saveLocalStore(memoryStore);
           return item;
@@ -4612,11 +4619,6 @@ export async function getLeadById(
 
   const found = memoryStore.leads?.[leadId];
   if (!found || found.centerId !== centerId) return null;
-  if (userRole === 'TRAINER') {
-    if (!currentTrainerId || found.assignedTrainerId !== currentTrainerId) {
-      return null;
-    }
-  }
   return found;
 }
 
@@ -4627,48 +4629,43 @@ export async function updateLead(
   userRole?: UserRole,
   currentTrainerId?: string | null
 ): Promise<Lead> {
-  if (userRole === 'MEMBER') {
-    throw new Error('회원은 신규문의를 수정할 수 없습니다.');
-  }
-
-  const existing = await getLeadById(centerId, leadId, userRole, currentTrainerId);
-  if (!existing) {
-    throw new Error('신규문의를 찾을 수 없거나 접근 권한이 없습니다.');
-  }
-
-  if (userRole === 'TRAINER') {
-    if (!currentTrainerId || existing.assignedTrainerId !== currentTrainerId) {
-      throw new Error('본인에게 배정된 신규문의만 수정할 수 있습니다.');
+  assertLeadStaff(userRole, currentTrainerId);
+  const uid = leadActorUid(userRole, currentTrainerId);
+  let event: LeadAssignment | null = null;
+  const prepare = async (existing: Lead | undefined, read?: (ref: any) => Promise<any>) => {
+    if (!existing || existing.centerId !== centerId) throw new Error('신규문의를 찾을 수 없거나 접근 권한이 없습니다.');
+    assertLeadUpdate(existing, data, userRole, currentTrainerId);
+    const trainerId = data.assignedTrainerId === undefined ? existing.assignedTrainerId || null : data.assignedTrainerId || null;
+    const assignmentChanged = trainerId !== (existing.assignedTrainerId || null);
+    const patch = { ...data };
+    delete patch.assignmentVersion;
+    if (data.assignedTrainerId !== undefined || data.assignedTrainerName !== undefined) {
+      const trainer = await resolveLeadTrainer(centerId, trainerId, read);
+      patch.assignedTrainerId = trainerId;
+      patch.assignedTrainerName = trainer?.name || null;
     }
-    if (data.assignedTrainerId !== undefined && data.assignedTrainerId !== existing.assignedTrainerId) {
-      throw new Error('트레이너는 담당자를 변경할 수 없습니다.');
-    }
-  }
-
-  const now = new Date().toISOString();
-  const updated: Lead = {
-    ...existing,
-    ...data,
-    leadId,
-    centerId,
-    createdAt: existing.createdAt,
-    updatedAt: now
+    const updated: Lead = cleanLeadData({ ...existing, ...patch, leadId, centerId,
+      createdAt: existing.createdAt, updatedAt: new Date().toISOString(),
+      ...(assignmentChanged ? { assignmentVersion: (existing.assignmentVersion || 0) + 1 } : {}) });
+    event = assignmentChanged ? assignmentEvent(updated, existing.assignedTrainerId || null, uid) : null;
+    return updated;
   };
-
-  memoryStore.leads[leadId] = updated;
-  saveLocalStore(memoryStore);
-
+  let updated: Lead;
   if (isFirestoreAvailable && db) {
-    try {
-      await updateDoc(doc(db, 'leads', leadId), {
-        ...data,
-        updatedAt: now
-      });
-    } catch (err) {
-      firestoreWriteFailed('updateLead', err);
-    }
+    updated = await runTransaction(db, async (transaction) => {
+      const leadRef = doc(db, 'leads', leadId);
+      const snap = await transaction.get(leadRef);
+      const next = await prepare(snap.exists() ? snap.data() as Lead : undefined, (ref) => transaction.get(ref));
+      transaction.set(leadRef, next);
+      if (event) transaction.set(doc(db, 'leads', leadId, 'assignments', String(event.version)), event);
+      return next;
+    });
+  } else {
+    updated = await prepare(memoryStore.leads[leadId]);
   }
-
+  memoryStore.leads[leadId] = updated;
+  if (event) localLeadAssignments.set(leadId, [...(localLeadAssignments.get(leadId) || []), event]);
+  saveLocalStore(memoryStore);
   return updated;
 }
 
@@ -5331,3 +5328,4 @@ export function comparePersonalWorkoutLogs(a: PersonalWorkoutLog, b: PersonalWor
     || (b.completedAt || '').localeCompare(a.completedAt || '')
     || b.logId.localeCompare(a.logId);
 }
+

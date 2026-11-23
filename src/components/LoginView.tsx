@@ -101,6 +101,7 @@ export const LoginView: React.FC = () => {
   return (
     <div className="min-h-screen bg-stone-100 flex flex-col justify-center items-center p-4 sm:p-6 font-sans selection:bg-stone-900 selection:text-white">
       <div className="max-w-md w-full my-auto">
+        <a href="/trainer-signup" className="block mb-4 text-center text-sm underline text-stone-700">트레이너 가입 신청 / 승인 상태 확인</a>
         {/* Brand & App Title Header */}
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-stone-900 text-white shadow-md mb-3">
@@ -300,3 +301,4 @@ export const LoginView: React.FC = () => {
     </div>
   );
 };
+

@@ -1,8 +1,10 @@
+import type { LeadAssignment } from '../types';
 import { confirmDialog } from '../utils/confirmDialog';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   createLead,
+  getLeadAssignments,
   updateLead,
   deleteLead,
   convertLeadToRegistration
@@ -89,6 +91,11 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   const isEditMode = Boolean(lead);
   const isCenterAdmin = currentUser?.role === 'CENTER_ADMIN';
   const isTrainer = currentUser?.role === 'TRAINER';
+  const canAssign = isCenterAdmin || isTrainer;
+  const canEditRecords = isCenterAdmin || !lead || (isTrainer && lead.assignedTrainerId === currentUser?.trainerId);
+  const availableTrainers = trainers.filter((t) => t.centerId === currentUser?.centerId && t.status === 'ACTIVE');
+  const [assignmentHistory, setAssignmentHistory] = useState<LeadAssignment[]>([]);
+  const [historyError, setHistoryError] = useState('');
 
   // Form states
   const [name, setName] = useState('');
@@ -151,19 +158,28 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       setInquiryDate(localToday());
       setSource('방문');
       setStatus('NEW');
-      setAssignedTrainerId('');
+      setAssignedTrainerId(isTrainer ? currentUser?.trainerId || '' : '');
       setOtDate('');
       setOtCompletedAt('');
       setMemo('');
       setLostReason('가격');
       setLostMemo('');
 
-      setAssignOtTrainerId('');
+      setAssignOtTrainerId(isTrainer ? currentUser?.trainerId || '' : '');
       setAssignOtDate(localToday());
       setLostReasonInput('가격');
       setLostMemoInput('');
     }
-  }, [isOpen, lead]);
+  }, [isOpen, lead, isTrainer, currentUser?.trainerId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setAssignmentHistory([]); setHistoryError('');
+    if (isOpen && lead) getLeadAssignments(lead.centerId, lead.leadId)
+      .then((events) => { if (!cancelled) setAssignmentHistory(events); })
+      .catch(() => { if (!cancelled) setHistoryError('담당자 변경 이력을 불러오지 못했습니다.'); });
+    return () => { cancelled = true; };
+  }, [isOpen, lead?.centerId, lead?.leadId]);
 
   if (!isOpen) return null;
 
@@ -255,9 +271,9 @@ export const LeadModal: React.FC<LeadModalProps> = ({
   // OT Workflow Actions
   // ==========================================
 
-  // 1. OT 배정 처리 (CENTER_ADMIN만 가능)
+  // 1. 같은 센터 직원의 OT 배정 처리
   const handleAssignOt = async () => {
-    if (!lead || !currentUser || !isCenterAdmin) return;
+    if (!lead || !currentUser || !canAssign) return;
     if (!assignOtTrainerId) {
       setError('OT를 배정할 담당 트레이너를 선택해주세요.');
       return;
@@ -459,9 +475,9 @@ export const LeadModal: React.FC<LeadModalProps> = ({
       const assignedTrainerName = assignedTrainerObj ? assignedTrainerObj.name : null;
 
       if (!isEditMode) {
-        // Create Mode (CENTER_ADMIN only)
-        if (!isCenterAdmin) {
-          throw new Error('신규문의 등록은 센터 관리자만 가능합니다.');
+        // Create Mode (center staff)
+        if (!canAssign) {
+          throw new Error('센터 직원만 신규문의를 등록할 수 있습니다.');
         }
 
         await createLead(
@@ -476,7 +492,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({
             assignedTrainerName,
             memo: memo.trim() || undefined
           },
-          currentUser.role
+          currentUser.role,
+          currentUser.trainerId
         );
       } else if (lead) {
         // Edit Mode
@@ -489,16 +506,22 @@ export const LeadModal: React.FC<LeadModalProps> = ({
           lostMemo: status === 'LOST' ? (lostMemo.trim() || null) : null
         };
 
-        // If Center Admin, they can also update name, phone, date, source, and assigned trainer
+        // Personal details remain admin-only; same-center assignment is available to staff.
         if (isCenterAdmin) {
           updatePayload.name = name.trim();
           updatePayload.phone = phone.trim();
           updatePayload.inquiryDate = inquiryDate;
           updatePayload.source = source;
+        }
+
+        if (!canEditRecords) {
+          (Object.keys(updatePayload) as (keyof typeof updatePayload)[]).forEach((key) => delete updatePayload[key]);
+          updatePayload.otDate = otDate || null;
+        }
+        if (assignedTrainerId !== (lead.assignedTrainerId || '')) {
           updatePayload.assignedTrainerId = assignedTrainerId || null;
           updatePayload.assignedTrainerName = assignedTrainerName;
         }
-
         await updateLead(
           currentUser.centerId,
           lead.leadId,
@@ -650,7 +673,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
           {/* Action Flow Panels (Based on Current Step) */}
           {isEditMode && lead && (
             <div className="mt-4 space-y-3">
-              {/* Step A: NEW or CONSULTING -> OT 배정 액션 (CENTER_ADMIN만 가능) */}
+              {/* Step A: NEW or CONSULTING -> OT 배정 액션 (센터 직원) */}
               {(status === 'NEW' || status === 'CONSULTING') && (
                 <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl space-y-3">
                   <div className="flex items-start justify-between">
@@ -674,7 +697,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                     )}
                   </div>
 
-                  {isCenterAdmin ? (
+                  {canAssign ? (
                     <div className="space-y-3 pt-1">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <div>
@@ -688,7 +711,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                             className="w-full px-2.5 py-1.5 bg-white border border-indigo-300 rounded-lg text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
                           >
                             <option value="">트레이너 선택</option>
-                            {trainers.map((t) => (
+                            {availableTrainers.map((t) => (
                               <option key={t.trainerId} value={t.trainerId}>
                                 {t.name} 트레이너 ({t.specialty || '전문'})
                               </option>
@@ -728,14 +751,14 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                     </div>
                   ) : (
                     <p className="text-xs text-indigo-700">
-                      * 신규 문의의 OT 배정 및 트레이너 지정은 센터 관리자만 진행할 수 있습니다.
+                      * 센터 직원 계정으로 OT를 배정할 수 있습니다.
                     </p>
                   )}
                 </div>
               )}
 
               {/* Step B: OT_SCHEDULED -> OT 완료 액션 */}
-              {status === 'OT_SCHEDULED' && (
+              {status === 'OT_SCHEDULED' && canEditRecords && (
                 <div className="p-4 bg-teal-50/80 border border-teal-200 rounded-xl space-y-3">
                   <div className="flex items-start justify-between">
                     <div>
@@ -775,7 +798,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
               )}
 
               {/* Step C: OT_COMPLETED -> OT 결과 액션 (PT 등록 vs 미등록) */}
-              {status === 'OT_COMPLETED' && (
+              {status === 'OT_COMPLETED' && canEditRecords && (
                 <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-3">
                   <div>
                     <h3 className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
@@ -990,7 +1013,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                 <div className="relative">
                   <User className="w-4 h-4 absolute left-3 top-2.5 text-stone-400" />
                   <input
-                    id="lead-name-input"
+                    id="lead-name-input" maxLength={100}
                     type="text"
                     required
                     disabled={isEditMode && !isCenterAdmin}
@@ -1063,23 +1086,41 @@ export const LeadModal: React.FC<LeadModalProps> = ({
             <div>
               <label className="block text-xs font-semibold text-stone-700 mb-1">
                 담당 트레이너
-                {isTrainer && <span className="ml-1 text-[11px] font-normal text-stone-500">(트레이너는 변경 불가)</span>}
+                <span className="ml-1 text-[11px] font-normal text-stone-500">(같은 센터 내 배정·변경 가능)</span>
               </label>
               <select
                 id="lead-trainer-select"
-                disabled={!isCenterAdmin}
+                disabled={!canAssign}
                 value={assignedTrainerId}
                 onChange={(e) => setAssignedTrainerId(e.target.value)}
                 className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-lg text-sm text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-transparent disabled:opacity-75 disabled:bg-stone-100 cursor-pointer"
               >
                 <option value="">미지정 (배정 대기)</option>
-                {trainers.map((t) => (
+                {availableTrainers.map((t) => (
                   <option key={t.trainerId} value={t.trainerId}>
                     {t.name} 트레이너 ({t.specialty || '전문'})
                   </option>
                 ))}
               </select>
             </div>
+
+            {isEditMode && (
+              <details className="text-xs text-stone-600 border border-stone-200 rounded-lg p-3">
+                <summary className="cursor-pointer font-semibold">담당자 변경 이력</summary>
+                {historyError && <p className="mt-2 text-rose-600">{historyError}</p>}
+                {!historyError && assignmentHistory.length === 0 && <p className="mt-2">기록된 변경 이력이 없습니다.</p>}
+                <ul className="mt-2 space-y-2">
+                  {assignmentHistory.map((event) => (
+                    <li key={event.version}>
+                      {trainers.find((t) => t.trainerId === event.previousTrainerId)?.name || '미배정'} → {event.assignedTrainerName || '미배정'}
+                      <span className="block text-stone-500">
+                        {new Date(event.changedAt).toLocaleString('ko-KR')} · {event.changedByUid === currentUser?.uid ? currentUser.name : trainers.find((t) => t.uid === event.changedByUid)?.name || '센터 직원'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
 
             {/* OT Date (Visible if assigned or scheduled) */}
             {(status === 'OT_SCHEDULED' || status === 'OT_COMPLETED' || otDate) && (
@@ -1092,7 +1133,7 @@ export const LeadModal: React.FC<LeadModalProps> = ({
                     id="lead-ot-date-input"
                     value={otDate || ''}
                     onChange={setOtDate}
-                    disabled={!isCenterAdmin && status !== 'OT_SCHEDULED'}
+                    disabled={!canAssign}
                   />
                 </div>
 
@@ -1120,6 +1161,8 @@ export const LeadModal: React.FC<LeadModalProps> = ({
               <textarea
                 id="lead-memo-input"
                 rows={3}
+                disabled={!canEditRecords}
+                maxLength={5000}
                 value={memo}
                 onChange={(e) => setMemo(e.target.value)}
                 placeholder="예: 바디프로필 목표, 무릎 수술 이력 있음, 퇴근 후 저녁 7시 수업 선호"
@@ -1198,3 +1241,4 @@ export const LeadModal: React.FC<LeadModalProps> = ({
     </>
   );
 };
+

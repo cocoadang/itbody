@@ -94,6 +94,7 @@ export const LeadList: React.FC<LeadListProps> = ({ onSelectMember }) => {
 
   const isCenterAdmin = currentUser?.role === 'CENTER_ADMIN';
   const isTrainer = currentUser?.role === 'TRAINER';
+  const canManageLeads = isCenterAdmin || isTrainer;
 
   const fetchLeadsData = useCallback(async () => {
     if (!currentUser) return;
@@ -144,8 +145,8 @@ export const LeadList: React.FC<LeadListProps> = ({ onSelectMember }) => {
       if (statusFilter !== 'ALL' && lead.status !== statusFilter) {
         return false;
       }
-      // 2. Trainer Filter (For CENTER_ADMIN)
-      if (isCenterAdmin && selectedTrainerFilter !== 'ALL') {
+      // 2. Same-center trainer filter
+      if (canManageLeads && selectedTrainerFilter !== 'ALL') {
         if (selectedTrainerFilter === 'UNASSIGNED') {
           if (lead.assignedTrainerId) return false;
         } else if (lead.assignedTrainerId !== selectedTrainerFilter) {
@@ -161,7 +162,7 @@ export const LeadList: React.FC<LeadListProps> = ({ onSelectMember }) => {
       }
       return true;
     });
-  }, [leads, statusFilter, selectedTrainerFilter, searchQuery, isCenterAdmin]);
+  }, [leads, statusFilter, selectedTrainerFilter, searchQuery, canManageLeads]);
 
   // Guard: MEMBER role should not access this view
   if (currentUser?.role === 'MEMBER') {
@@ -192,7 +193,7 @@ export const LeadList: React.FC<LeadListProps> = ({ onSelectMember }) => {
           <p className="text-xs sm:text-sm text-stone-500 mt-0.5">
             {isCenterAdmin
               ? '방문/전화 문의 접수부터 상담, OT 배정, PT 정식 등록까지의 전환 흐름을 관리합니다.'
-              : '나에게 배정된 신규 문의 및 OT 일정, 상담 진행 상황을 관리합니다.'}
+              : '센터의 OT 대상자를 등록하고 담당 트레이너를 배정합니다.'}
           </p>
         </div>
 
@@ -206,8 +207,8 @@ export const LeadList: React.FC<LeadListProps> = ({ onSelectMember }) => {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
 
-          {/* Only CENTER_ADMIN has authority to register a new lead */}
-          {isCenterAdmin && (
+          {/* Center staff can register new OT leads */}
+          {canManageLeads && (
             <button
               id="btn-register-lead"
               onClick={() => {
@@ -258,8 +259,8 @@ export const LeadList: React.FC<LeadListProps> = ({ onSelectMember }) => {
             ))}
           </div>
 
-          {/* Trainer Filter (CENTER_ADMIN only) */}
-          {isCenterAdmin && trainers.length > 0 && (
+          {/* Same-center trainer filter */}
+          {canManageLeads && trainers.length > 0 && (
             <div className="flex items-center gap-1.5 w-full sm:w-auto sm:pl-2 sm:border-l sm:border-stone-200">
               <Filter className="w-3.5 h-3.5 text-stone-400 shrink-0" />
               <select
@@ -301,14 +302,14 @@ export const LeadList: React.FC<LeadListProps> = ({ onSelectMember }) => {
         <EmptyState
           id="empty-lead-list-center"
           icon={ClipboardList}
-          title={isCenterAdmin ? '등록된 신규문의가 없습니다' : '배정된 신규문의가 없습니다'}
+          title="등록된 신규문의가 없습니다"
           description={
             isCenterAdmin
               ? '방문 상담 또는 전화로 접수된 신규 고객 문의를 등록하고 OT 및 PT 등록 전환을 관리해보세요.'
-              : '현재 트레이너님께 배정된 신규 상담 또는 OT 문의 내역이 없습니다.'
+              : '신규 OT 대상자를 등록하고 담당 트레이너를 선택해보세요.'
           }
-          actionText={isCenterAdmin ? '신규문의 등록' : undefined}
-          onAction={isCenterAdmin ? () => {
+          actionText={canManageLeads ? '신규문의 등록' : undefined}
+          onAction={canManageLeads ? () => {
             setSelectedLead(null);
             setIsModalOpen(true);
           } : undefined}
@@ -602,3 +603,4 @@ export const LeadList: React.FC<LeadListProps> = ({ onSelectMember }) => {
     </div>
   );
 };
+

@@ -1,3 +1,4 @@
+import { parseSessionNumber } from '../utils/sessionNumber';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, Edit2, Plus, Search, Trash2, X, AlertCircle, FileCheck } from 'lucide-react';
 import type { ExerciseRecord, ExerciseSet, Member, MuscleGroup, PtContract, PtSession, SessionBodyRecord, SessionComment, SessionMedia, SessionStatus } from '../types';
@@ -127,7 +128,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
   // Form
   const [isOpen, setIsOpen] = useState(false);
   const [editing, setEditing] = useState<PtSession | null>(null);
-  const [sessionNumber, setSessionNumber] = useState(1);
+  const [sessionNumber, setSessionNumber] = useState('1');
   const [date, setDate] = useState(today());
   const [status, setStatus] = useState<SessionStatus>('COMPLETED');
   const [contractId, setContractId] = useState('');
@@ -206,7 +207,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
 
   const openNew = () => {
     setEditing(null);
-    setSessionNumber(sessions.length > 0 ? Math.max(...sessions.map((s) => s.sessionNumber)) + 1 : 1);
+    setSessionNumber(String(sessions.length > 0 ? Math.max(...sessions.map((s) => s.sessionNumber)) + 1 : 1));
     setDate(today());
     setStatus('COMPLETED');
     setContractId(activeContract?.contractId || contracts[0]?.contractId || '');
@@ -224,7 +225,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
 
   const openEdit = (s: PtSession) => {
     setEditing(s);
-    setSessionNumber(s.sessionNumber);
+    setSessionNumber(String(s.sessionNumber));
     setDate(s.date);
     setStatus(s.status);
     setContractId(s.contractId || activeContract?.contractId || '');
@@ -277,6 +278,8 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !canEdit) return;
+    const parsedSessionNumber = parseSessionNumber(sessionNumber);
+    if (parsedSessionNumber === null) return setError('회차는 1 이상의 정수로 입력해주세요.');
     if (!date || !isValidDate(date)) return setError('수업 날짜를 확인해주세요.');
     if (!contractId) return setError('등록된 PT 이용권이 없습니다. [회원 정보]에서 이용권을 먼저 등록해주세요.');
     setError('');
@@ -308,7 +311,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
       return setError(`체성분 기록을 저장하지 못했습니다: ${err?.message || ''}`);
     }
     const fields = {
-      sessionNumber,
+      sessionNumber: parsedSessionNumber,
       date,
       status,
       contractId,
@@ -511,7 +514,7 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
               <div className="grid grid-cols-3 gap-2">
                 <label className="text-xs text-stone-600">
                   회차
-                  <input type="number" min={1} value={sessionNumber} onChange={(e) => setSessionNumber(parseInt(e.target.value, 10) || 1)} className="mt-1 w-full px-3 py-2 text-sm border border-stone-300 rounded-lg" />
+                  <input type="number" inputMode="numeric" min={1} step={1} required value={sessionNumber} onChange={(e) => setSessionNumber(e.target.value)} className="mt-1 w-full px-3 py-2 text-sm border border-stone-300 rounded-lg" />
                 </label>
                 <div className="text-xs text-stone-600">
                   <label htmlFor="journal-date">날짜</label>
@@ -682,3 +685,4 @@ export const SessionJournalTab: React.FC<SessionJournalTabProps> = ({ member, se
     </div>
   );
 };
+

@@ -13,6 +13,7 @@ const stubs = {
   dotenv: 'export default { config(){} };',
   vite: 'export const createServer = () => { throw Error("Unexpected Vite initialization"); };',
   '@google/genai': 'export class GoogleGenAI {} export const Type = {};',
+  './src/server/trainerRegistration': 'export const registerTrainerRegistration = () => {};',
   './src/server/memberAccess': 'export const registerMemberAccess = () => {};',
   './src/server/kakaoAuth': 'export const registerKakaoAuth = () => {};',
   './src/server/aiSecurity': 'export const requireAiAccess = () => { throw Error("Auth must be isolated"); };',
@@ -37,3 +38,4 @@ for (const path of ['/api/ai/session-draft', '/api/ai/review-draft']) {
 }
 delete globalThis.__aiTimeoutRoutes;
 console.log('Both AI routes return safe 504 JSON on deadline; all SDK/auth/database dependencies stubbed.');
+
